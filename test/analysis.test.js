@@ -184,25 +184,55 @@ test('annonce trop basse par rapport aux ventes récentes', () => {
   assert.equal(r.suggested, 1000);
 });
 
-test('collection : doublons et cartes « hype », hors coups de cœur', () => {
-  const tracks = [track(1, 'single'), track(2, 'hit'), track(3, 'single'), track(4, 'or'), track(5, 'single')];
+test('collection : doublons et cartes « hype »', () => {
+  const tracks = [track(1, 'single'), track(2, 'hit'), track(3, 'single'), track(4, 'or')];
   const stats = {
     copies: {
       1: [[500, null]], // unique, valeur 441 = 7,35 × base 60 → hype
       2: [[30, null], [800, null], [1200, null]], // 2 doublons
       3: [[70, null]], // unique, valeur normale
       4: [[12, 'hit']], // unique, montée, valeur normale
-      5: [[9, null]], // hype mais en coup de cœur
     },
-    values: { 1: 441, 2: 210, 3: 55, 4: 800, 5: 900 },
-    lockedSerials: { 5: [9] },
+    values: { 1: 441, 2: 210, 3: 55, 4: 800 },
   };
   const out = collectionCandidates({ tracks, stats, hypeRatio: 3, minValue: 100 });
   assert.deepEqual(out.map((c) => c.track.id), ['2', '1']);
   assert.equal(out[0].duplicates, 2);
   assert.equal(out[0].sellSerial, 1200); // on vend le plus grand numéro
+  assert.equal(out[0].favorite, false);
   assert.equal(out[1].lastCopy, true);
   assert.equal(out[1].reason, 'hype');
+  assert.equal(out[1].protectedArtist, false);
+});
+
+test('collection : coups de cœur et artistes protégés proposés mais signalés', () => {
+  const tracks = [track(2, 'hit'), { ...track(5, 'single'), artistId: '42' }, track(6, 'hit')];
+  const stats = {
+    copies: {
+      2: [[30, null], [800, null], [1200, null]], // le n°1200 en coup de cœur
+      5: [[9, null]], // hype, en coup de cœur, artiste protégé
+      6: [[40, null], [41, null]], // doublon dont les deux numéros sont en coup de cœur
+    },
+    values: { 2: 210, 5: 900, 6: 250 },
+    lockedSerials: { 2: [1200], 5: [9], 6: [40, 41] },
+  };
+  const out = collectionCandidates({ tracks, stats, protectedArtists: ['42'], hypeRatio: 3, minValue: 100 });
+  const byId = Object.fromEntries(out.map((c) => [c.track.id, c]));
+  assert.deepEqual(out.map((c) => c.track.id), ['6', '2', '5']);
+
+  // Doublon : on vend un numéro libre, le coup de cœur reste signalé.
+  assert.equal(byId[2].sellSerial, 800);
+  assert.equal(byId[2].sellIsFavorite, false);
+  assert.equal(byId[2].favorite, true);
+  assert.deepEqual(byId[2].favoriteSerials, [1200]);
+
+  // Tous les numéros en coup de cœur : il faudra retirer le cœur.
+  assert.equal(byId[6].sellSerial, 41);
+  assert.equal(byId[6].sellIsFavorite, true);
+
+  assert.equal(byId[5].sellIsFavorite, true);
+  assert.equal(byId[5].protectedArtist, true);
+  assert.equal(byId[2].protectedArtist, false);
 });
 
 test('vente d’un doublon : recycler si la vente rapporte moins', () => {

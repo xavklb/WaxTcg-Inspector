@@ -10,7 +10,7 @@ Extension Chrome d'**aide à la décision** pour le Marché de [WAX](https://wax
 |---|---|
 | **Acheter** | Les titres en vente sous leur prix de revente réaliste. Pour chacun : prix d'achat max, prix de revente, gain net après la taxe de 5 %, nombre de ventes sur 7 jours et délai de revente estimé. |
 | **Enchères** | Les enchères (Or et plus) qui se terminent bientôt sous leur valeur de revente, avec la mise maximale à ne pas dépasser. |
-| **Vendre** | Tes annonces dépassées par un autre vendeur ou trop basses, avec le prix conseillé. Puis tes doublons et tes cartes « hype » à vendre, avec un prix rapide et un prix cote. Tes coups de cœur ne sont jamais proposés. |
+| **Vendre** | Tes annonces dépassées par un autre vendeur ou trop basses, avec le prix conseillé. Puis tes doublons et tes cartes « hype » à vendre, avec un prix rapide et un prix cote. Une carte en **coup de cœur ❤** ou d'un **artiste protégé 🛡** est signalée par un badge et un avertissement. |
 | **Réglages** | Budget, gain et rendement minimum, ventes minimum, nombre de cartes vérifiées, pause entre deux requêtes… |
 
 Le prix de revente ne se fie pas à la cote seule. Il prend la médiane des 5 dernières ventes, se place juste sous le vendeur le moins cher et reste dans la fourchette autorisée (75–200 % de la cote).

@@ -22,9 +22,11 @@ let listingId = 50_000;
 
 const titleFor = (n) => `${WORDS[n % WORDS.length]}${n >= WORDS.length ? ` ${Math.floor(n / WORDS.length) + 1}` : ''}`;
 
+const artistIdOf = (artist) => String(100 + Math.max(0, ARTISTS.indexOf(artist)));
+
 function makeTrack(id, rarity, title, artist) {
   return {
-    id: String(id), title, artist, artistId: '1', albumId: '1', album: 'Album démo', cover: '',
+    id: String(id), title, artist, artistId: artistIdOf(artist), albumId: '1', album: 'Album démo', cover: '',
     duration: 180, rank: 600000, rarity, region: 'fr', position: 1, albumSize: 12, year: 2025, style: 'rap',
   };
 }
@@ -112,7 +114,7 @@ const COLLECTION = [
   { spec: { id: 7000, rarity: 'hit', title: 'Gravité', artist: 'Orion', quote: 240, best: 230, sellers: 2, recent: 6 }, copies: [[45, null], [812, null], [1530, null]], value: 240 },
   { spec: { id: 7001, rarity: 'single', title: 'Coup de cœur', artist: 'Saphir', quote: 600, best: 580, recent: 8 }, copies: [[3, null]], value: 600, locked: [3] },
   { spec: { id: 7002, rarity: 'single', title: 'Sortie de nuit', artist: 'Nova', quote: 441, best: 350, sellers: 4, history: fallingHistory }, copies: [[987, null]], value: 441 },
-  { spec: { id: 7003, rarity: 'or', title: 'Carrousel', artist: 'Atlas', quote: 950, best: 900, sellers: 3, recent: 5 }, copies: [[120, null], [2210, null]], value: 950 },
+  { spec: { id: 7003, rarity: 'or', title: 'Carrousel', artist: 'Atlas', quote: 950, best: 900, sellers: 3, recent: 5 }, copies: [[120, null], [900, null], [2210, null]], value: 950, locked: [900] },
   { spec: { id: 7004, rarity: 'demo', title: 'Face B', artist: 'Kenza B', quote: 25, best: 20, sellers: 2, recent: 0, older: 2 }, copies: [[5000, null], [6100, null]], value: 25 },
   { spec: { id: 7005, rarity: 'or', title: 'Disque d’or', artist: 'Le Collectif', quote: 2400, best: 2300, sellers: 2, recent: 4 }, copies: [[33, 'hit']], value: 2400 },
 ];
@@ -129,6 +131,7 @@ const GAME = {
     notes: 430,
     collection: Object.fromEntries(collectionTracks.map((t) => [t.id, 1])),
     packsOpened: 487,
+    protectArtists: [artistIdOf('Orion')],
   },
   tracks: collectionTracks,
   serverNow: NOW,

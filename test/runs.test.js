@@ -57,5 +57,14 @@ test('runSell : contrôle mes annonces et propose doublons et cartes hype', asyn
   assert.ok(res.listings.some((l) => l.status === 'undercut'));
   assert.ok(res.sales.some((s) => s.duplicates > 0));
   assert.ok(res.sales.some((s) => s.reason === 'hype'));
-  assert.ok(!res.sales.some((s) => s.track.id === '7001'), 'coup de cœur jamais proposé');
+});
+
+test('runSell : signale coups de cœur et artistes protégés', async () => {
+  const res = await runSell(fakeApi(), DEFAULT_SETTINGS, opts);
+  const byId = Object.fromEntries(res.sales.map((s) => [s.track.id, s]));
+  assert.equal(byId['7001']?.sellIsFavorite, true, 'coup de cœur proposé mais signalé');
+  assert.equal(byId['7003']?.sellIsFavorite, false, 'doublon : on vend un numéro libre');
+  assert.deepEqual(byId['7003']?.favoriteSerials, [900]);
+  assert.equal(byId['7000']?.protectedArtist, true, 'artiste protégé signalé');
+  assert.equal(byId['7002']?.protectedArtist, false);
 });
