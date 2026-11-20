@@ -11,13 +11,14 @@ Extension Chrome d'**aide à la décision** pour le Marché de [WAX](https://wax
 | **Acheter** | Les titres en vente sous leur prix de revente réaliste. Pour chacun : prix d'achat max, prix de revente, gain net après la taxe de 5 %, nombre de ventes sur 7 jours et délai de revente estimé. |
 | **Enchères** | Les enchères (Or et plus) qui se terminent bientôt sous leur valeur de revente, avec la mise maximale à ne pas dépasser. |
 | **Vendre** | Tes annonces dépassées par un autre vendeur ou trop basses, avec le prix conseillé. Puis tes doublons et tes cartes « hype » à vendre, avec un prix rapide et un prix cote. Une carte en **coup de cœur ❤** ou d'un **artiste protégé 🛡** est signalée par un badge et un avertissement. |
+| **Deck** | Face to Face : le deck de 5 cartes de ta collection qui couvre le mieux les 9 critères (20 points au plus, 2 cartes par artiste), comparé à ton deck actuel. Plus une antisèche : la carte à poser pour chaque critère. Les notes sont **estimées** (le jeu ne les dévoile que pendant une partie). |
 | **Réglages** | Budget, gain et rendement minimum, ventes minimum, nombre de cartes vérifiées, pause entre deux requêtes… |
 
 Le prix de revente ne se fie pas à la cote seule. Il prend la médiane des 5 dernières ventes, se place juste sous le vendeur le moins cher et reste dans la fourchette autorisée (75–200 % de la cote).
 
 ### Garde-fous
 
-- `content.js` n'accepte que des requêtes **GET** vers une liste fermée de routes de consultation (`/api/game`, `/api/stats`, `/api/auctions`, `/api/market…`, `/api/cards/{id}`). Acheter, vendre ou enchérir est impossible par construction.
+- `content.js` n'accepte que des requêtes **GET** vers une liste fermée de routes de consultation (`/api/game`, `/api/stats`, `/api/auctions`, `/api/faceoff`, `/api/market…`, `/api/cards/{id}`). Acheter, vendre ou enchérir est impossible par construction.
 - Une requête à la fois, avec au moins 400 ms entre deux (700 ms par défaut), et un cache de 2 à 5 minutes. Une analyse fait environ 5 à 45 requêtes.
 - Rien ne tourne en arrière-plan : aucune requête sans clic sur « Analyser ».
 
@@ -53,7 +54,8 @@ extension/
   sidepanel.*        interface
   lib/constants.js   constantes du jeu (taxe, fourchettes, raretés) et réglages
   lib/analysis.js    calculs purs : taxe, liquidité, prix de revente, verdicts
-  lib/runs.js        les trois analyses (lecture API → calculs)
+  lib/deck.js        Face to Face : notes estimées, force d'un deck, recherche du meilleur deck
+  lib/runs.js        les analyses (lecture API → calculs)
   lib/api.js         file de requêtes, pause, cache
 dev/                 aperçu hors Chrome + données de démonstration
 test/                tests Node (node --test)

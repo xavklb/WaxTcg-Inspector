@@ -1,6 +1,7 @@
 import { WaxApi } from './lib/api.js';
-import { runAuctions, runBuy, runSell } from './lib/runs.js';
-import { DEFAULT_SETTINGS, MIN_DELAY_MS, RARITY, normalizeSettings } from './lib/constants.js';
+import { runAuctions, runBuy, runDeck, runSell } from './lib/runs.js';
+import { strengths } from './lib/deck.js';
+import { DEFAULT_SETTINGS, FACEOFF, MIN_DELAY_MS, RARITY, normalizeSettings } from './lib/constants.js';
 import { ago, duration, fmt, pct } from './lib/format.js';
 
 const DAY = 86_400_000;
@@ -240,6 +241,91 @@ function renderSell(res) {
   ];
 }
 
+function deckCard(c) {
+  return card(
+    c.track,
+    [
+      meta(strengths(c).map((s) => `${s.label} ${s.note}`)),
+      c.themes.length ? meta([`Thèmes : ${c.themes.map((t) => FACEOFF.themes[t] ?? t).join(', ')}`]) : null,
+    ],
+    [badge(`${c.points} pt${c.points > 1 ? 's' : ''}`)],
+  );
+}
+
+function sheetView(sheet) {
+  return h(
+    'div',
+    { class: 'sheet' },
+    sheet.map((s) =>
+      h(
+        'div',
+        { class: 'row' },
+        h('span', { class: 'k' }, s.label),
+        h(
+          'span',
+          { class: 'v' },
+          h('strong', null, s.picks[0].title),
+          h('span', { class: 'num' }, ` ${s.picks[0].note}`),
+          s.picks[1] ? h('span', { class: 'muted' }, ` · puis ${s.picks[1].title}`) : null,
+        ),
+      ),
+    ),
+  );
+}
+
+const sameDeck = (a, b) => a.map((c) => c.id).sort().join() === b.map((c) => c.id).sort().join();
+
+function renderDeck(res) {
+  const max = FACEOFF.maxPoints;
+  if (!res.best) {
+    return h('p', { class: 'empty' }, 'Impossible de composer un deck valide avec ta collection (5 cartes, 20 points, 2 par artiste).');
+  }
+  const cur = res.current;
+  const same = cur && sameDeck(cur.cards, res.best.cards);
+  const diff = cur ? res.best.strength - cur.strength : null;
+  return [
+    h('p', { class: 'summary num' }, [
+      res.gemsToday != null ? `Gemmes du jour ${fmt(res.gemsToday)}/${fmt(res.gemsMax)}` : null,
+      `${fmt(res.collection)} cartes évaluées`,
+    ].filter(Boolean).map((t) => h('span', null, t))),
+    h('h2', { class: 'section' }, `Deck conseillé · ${res.best.points}/${max} pts`),
+    h(
+      'div',
+      { class: 'profit num' },
+      `Force estimée ${fmt(res.best.strength)}`,
+      cur && !same ? h('span', { class: 'muted' }, ` · ton deck ${fmt(cur.strength)} (${diff >= 0 ? '+' : ''}${fmt(diff)})`) : null,
+    ),
+    h(
+      'p',
+      { class: 'advice' },
+      same ? 'C’est déjà ton deck actuel : rien à changer.' : 'Pour l’appliquer : Face to Face → Modifier le deck, puis Valider le deck.',
+    ),
+    res.best.cards.map(deckCard),
+    h('h2', { class: 'section' }, 'Quelle carte poser selon le critère'),
+    sheetView(res.best.sheet),
+    h('p', { class: 'note' }, 'En partie, une carte du thème tiré prend +15 : à note proche, pose plutôt celle-là.'),
+    cur && !same
+      ? h(
+          'details',
+          { class: 'rejected' },
+          h('summary', null, `Ton deck actuel · ${cur.points}/${max} pts · antisèche`),
+          sheetView(cur.sheet),
+          cur.cards.map(deckCard),
+        )
+      : null,
+    res.missingFromDeck > 0
+      ? h('p', { class: 'reasons' }, `${res.missingFromDeck} carte${res.missingFromDeck > 1 ? 's' : ''} de ton deck actuel ne ${res.missingFromDeck > 1 ? 'sont' : 'est'} plus dans ta collection.`)
+      : null,
+    h(
+      'p',
+      { class: 'note' },
+      'Force = note moyenne attendue par manche. Notes estimées de 0 à 100, en comparant tes cartes entre elles : popularité Deezer, année, durée, cote et rareté. ' +
+        'Les fans sont approchés par le titre le plus populaire de l’artiste, et le bonus de thème moyen est inclus. ' +
+        'Le jeu calcule les vraies notes de son côté : sers-t’en comme d’un guide.',
+    ),
+  ];
+}
+
 const VIEWS = {
   buy: {
     label: 'Acheter',
@@ -258,6 +344,12 @@ const VIEWS = {
     intro: 'Tes annonces dépassées ou trop basses, puis tes doublons et tes cartes en pleine hype à vendre.',
     run: runSell,
     render: renderSell,
+  },
+  deck: {
+    label: 'Deck',
+    intro: 'Face to Face : le deck de 5 cartes qui couvre le mieux les 9 critères (20 points au plus, 2 cartes par artiste), et la carte à poser pour chaque critère.',
+    run: runDeck,
+    render: renderDeck,
   },
 };
 

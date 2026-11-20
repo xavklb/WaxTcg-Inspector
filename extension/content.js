@@ -7,6 +7,7 @@
     /^\/api\/game$/,
     /^\/api\/stats$/,
     /^\/api\/auctions$/,
+    /^\/api\/faceoff$/,
     /^\/api\/market\?[A-Za-z0-9=&%._-]*$/,
     /^\/api\/market\/\d+$/,
     /^\/api\/cards\/\d+$/,

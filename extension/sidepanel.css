@@ -88,7 +88,8 @@ button {
 
 .tab {
   flex: 1;
-  padding: 8px 4px;
+  min-width: 0;
+  padding: 8px 2px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
@@ -316,6 +317,44 @@ details.rejected > summary {
 
 details.rejected .card {
   opacity: 0.75;
+}
+
+/* Deck Face to Face */
+.muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.sheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.sheet .row {
+  align-items: baseline;
+  min-width: 0;
+}
+
+.sheet .k {
+  flex: none;
+}
+
+.sheet .v {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* Réglages */
