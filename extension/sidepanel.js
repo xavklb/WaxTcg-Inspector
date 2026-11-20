@@ -193,10 +193,14 @@ function saleCard(r) {
     sell: [badge('Vendre', 'good'), 'Prix rapide pour partir vite, prix cote pour gagner plus.'],
   };
   const [verdictBadge, advice] = verdicts[r.verdict];
+  const otherFavorites = (r.favoriteSerials ?? []).filter((s) => s !== r.sellSerial);
   const badges = [
     verdictBadge,
+    r.sellIsFavorite ? badge('❤ Coup de cœur', 'bad') : null,
+    r.protectedArtist ? badge('🛡 Artiste protégé', 'bad') : null,
     r.duplicates > 0 ? badge(`doublon ×${r.duplicates}`) : badge(`hype ×${r.ratio.toFixed(1)}`),
     badge(`vends le n°${r.sellSerial}`),
+    !r.sellIsFavorite && otherFavorites.length ? badge(`❤ n°${otherFavorites.join(', ')} en coup de cœur`) : null,
     r.upgradedFrom ? badge(`montée (tirée en ${RARITY[r.upgradedFrom]?.label ?? r.upgradedFrom})`, 'good') : null,
   ].filter(Boolean);
   return card(
@@ -210,6 +214,10 @@ function saleCard(r) {
         r.duplicates > 0 ? `recyclage ${fmt(r.recycle)}` : null,
       ]),
       h('p', { class: 'advice' }, advice),
+      r.sellIsFavorite
+        ? h('p', { class: 'reasons' }, `Le n°${r.sellSerial} est en coup de cœur : retire le cœur sur la carte avant de la mettre en vente.`)
+        : null,
+      r.protectedArtist ? h('p', { class: 'reasons' }, `Tu as protégé ${r.track.artist || 'cet artiste'} : vérifie que tu veux vraiment vendre.`) : null,
       r.lastCopy ? h('p', { class: 'reasons' }, `Dernier exemplaire : ta valeur de collection baissera d’environ ${notes(r.value)}.`) : null,
     ],
     badges,
@@ -228,7 +236,7 @@ function renderSell(res) {
     h('h2', { class: 'section' }, `À mettre en vente (${res.sales.length}${res.candidates > res.checked ? ` sur ${res.candidates}` : ''})`),
     res.sales.length
       ? res.sales.map(saleCard)
-      : h('p', { class: 'empty' }, 'Ni doublon, ni carte en pleine hype dans ta collection (hors coups de cœur).'),
+      : h('p', { class: 'empty' }, 'Ni doublon, ni carte en pleine hype dans ta collection.'),
   ];
 }
 

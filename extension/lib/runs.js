@@ -117,6 +117,7 @@ export async function runSell(api, settings, { now = Date.now, progress = () => 
   const candidates = collectionCandidates({
     tracks: game?.tracks ?? [],
     stats,
+    protectedArtists: game?.state?.protectArtists ?? [],
     hypeRatio: settings.hypeRatio,
     minValue: settings.minHypeValue,
   });

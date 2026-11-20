@@ -236,10 +236,13 @@ export function reviewListing(listing, detail, track, now) {
  * Cartes de ma collection à envisager de vendre :
  * - les doublons (on garde toujours le plus petit numéro) ;
  * - les cartes « hype », dont la valeur dépasse `hypeRatio` × la cote de base de leur rareté.
- * Les coups de cœur (numéros verrouillés) ne sont jamais proposés.
+ * Les coups de cœur et les artistes protégés ne sont pas exclus mais signalés :
+ * favorite / sellIsFavorite (le numéro à vendre est en coup de cœur), protectedArtist.
  * `stats` vient de /api/stats : copies {id: [[numéro, rareté d'origine], …]}, values, lockedSerials.
+ * `protectedArtists` vient de /api/game (state.protectArtists) : identifiants d'artistes.
  */
-export function collectionCandidates({ tracks, stats, hypeRatio = 3, minValue = 0 }) {
+export function collectionCandidates({ tracks, stats, protectedArtists = [], hypeRatio = 3, minValue = 0 }) {
+  const protectedIds = new Set((protectedArtists ?? []).map(String));
   const out = [];
   for (const track of tracks ?? []) {
     if (!track?.id) continue;
@@ -247,18 +250,21 @@ export function collectionCandidates({ tracks, stats, hypeRatio = 3, minValue = 
     if (!copies.length) continue;
     const locked = new Set(stats?.lockedSerials?.[track.id] ?? []);
     const keep = Math.min(...copies.map((c) => c.serial));
-    const free = copies.filter((c) => !locked.has(c.serial)).sort((a, b) => b.serial - a.serial);
-    if (!free.length) continue;
 
-    const duplicates = Math.min(free.length, copies.length - 1);
+    const duplicates = copies.length - 1;
     const value = stats?.values?.[track.id] ?? 0;
     const base = RARITY[track.rarity]?.base ?? 0;
     const ratio = base ? value / base : 0;
     const hype = ratio >= hypeRatio && value >= minValue;
     if (duplicates <= 0 && !hype) continue;
 
-    // Pour un doublon, on vend le plus grand numéro, jamais celui qu'on garde.
-    const sell = duplicates > 0 ? free.find((c) => c.serial !== keep) ?? free[0] : free[0];
+    // Numéro à vendre : le plus grand qui n'est ni gardé ni en coup de cœur,
+    // sinon le plus grand hors coup de cœur, sinon un coup de cœur (il faudra retirer le cœur).
+    const bySerialDesc = [...copies].sort((a, b) => b.serial - a.serial);
+    const sell =
+      (duplicates > 0 && bySerialDesc.find((c) => !locked.has(c.serial) && c.serial !== keep)) ||
+      bySerialDesc.find((c) => !locked.has(c.serial)) ||
+      bySerialDesc[0];
     out.push({
       track,
       value,
@@ -269,6 +275,10 @@ export function collectionCandidates({ tracks, stats, hypeRatio = 3, minValue = 
       lastCopy: duplicates <= 0,
       upgradedFrom: copies.find((c) => c.origin)?.origin ?? null,
       reason: duplicates > 0 ? 'duplicate' : 'hype',
+      favorite: locked.size > 0,
+      favoriteSerials: [...locked].sort((a, b) => a - b),
+      sellIsFavorite: locked.has(sell.serial),
+      protectedArtist: protectedIds.has(String(track.artistId)),
     });
   }
   return out.sort((a, b) => (b.duplicates > 0) - (a.duplicates > 0) || b.value - a.value);
