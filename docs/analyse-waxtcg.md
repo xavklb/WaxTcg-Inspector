@@ -153,6 +153,9 @@ Toutes les routes passent par `https://waxtcg.com/api/...` avec le cookie de ses
 | `/api/sets`, `/api/sets/{id}` | boosters disponibles et contenu |
 | `/api/challenges` | défis de collection (récompenses en gemmes et ♫) |
 | `/api/human` | `{due: bool}` : vérification humaine en attente |
+| `/api/wall` | mur WAX FM : 150 dernières annonces `{kind: 'want' (cherche) \| 'give' (propose), track, note, who, at, mine, have (mes exemplaires), forMe}` |
+| `/api/market` → `wanted` | les 6 cartes les plus souhaitées : `{track, wishes, best}` (`best: null` = personne n'en vend) |
+| `/api/artists?started=1&offset=…&limit=60` | mes artistes avec `artist.fans` (60 par page) |
 
 ### Actions (POST `/api/market`), documentées pour référence
 

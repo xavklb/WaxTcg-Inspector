@@ -59,6 +59,22 @@ test('runSell : contrôle mes annonces et propose doublons et cartes hype', asyn
   assert.ok(res.sales.some((s) => s.reason === 'hype'));
 });
 
+test('runSell : cartes demandées que je possède', async () => {
+  const api = fakeApi();
+  const res = await runSell(api, DEFAULT_SETTINGS, opts);
+  assert.ok(api.calls.includes('/api/wall'));
+  assert.deepEqual(res.demand.map((d) => d.track.id), ['7030', '7003', '7012']);
+  const [top, wanted] = res.demand;
+  assert.equal(top.verdict, 'no-seller');
+  assert.equal(top.wishes, 537);
+  assert.equal(top.price, top.range.max);
+  assert.equal(wanted.requests, 2);
+  assert.equal(wanted.sellSerial, 2210); // le n°900 est en coup de cœur
+  assert.equal(wanted.verdict, 'compete');
+  assert.deepEqual(res.demandOthers.map((o) => o.track.id), ['1060', '1061']);
+  assert.equal(res.wantPosts, 4);
+});
+
 test('runSell : signale coups de cœur et artistes protégés', async () => {
   const res = await runSell(fakeApi(), DEFAULT_SETTINGS, opts);
   const byId = Object.fromEntries(res.sales.map((s) => [s.track.id, s]));

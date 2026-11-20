@@ -185,6 +185,33 @@ const FACEOFF = {
   tracks: FACEOFF_DECK.map((id) => SPECS.get(id).track),
 };
 
+// ---------------------------------------------------------------- Cartes demandées
+
+// Les plus souhaitées du Marché : une que j'ai (sans vendeur), deux que je n'ai pas.
+const WANTED = [
+  { track: SPECS.get('7030').track, wishes: 537, best: null },
+  { track: SPECS.get('1060').track, wishes: 336, best: Math.min(...SPECS.get('1060').listings.map((l) => l.price)) },
+  { track: SPECS.get('1061').track, wishes: 235, best: Math.min(...SPECS.get('1061').listings.map((l) => l.price)) },
+];
+
+// Mur WAX FM : annonces « Cherche » (want) et « Échange » (give).
+const post = (id, kind, trackId, who, minutesAgo, note = '', mine = false) => ({
+  id, kind, track: SPECS.get(trackId).track, note, who, at: NOW - minutesAgo * MIN, avatar: '', mine, have: 0, forMe: true,
+});
+const WALL = {
+  posts: [
+    post(118210, 'want', '7003', 'Lina_92', 4, 'Je paye bien, dispo maintenant'),
+    post(118205, 'want', '7003', 'Kenzo', 18),
+    post(118203, 'want', '7012', 'MawKuro', 25, 'Cherche pour finir l’album'),
+    post(118201, 'want', '1005', 'Axel9', 31), // une carte que je n'ai pas
+    post(118199, 'want', '7002', 'Moi', 40, 'Mon annonce', true), // la mienne : ignorée
+    post(118197, 'give', '7004', 'Prod', 45, 'Dispo pour un échange'),
+    post(118195, 'give', '1012', 'Wen', 60),
+  ],
+  blocked: [],
+  online: 192,
+};
+
 // Fans des artistes (/api/artists?started=1).
 const ARTIST_FANS = [8_150, 2_400_000, 120_000, 9_048_978, 35_000, 640_000, 1_200_000, 15_000, 4_300_000, 72_000];
 
@@ -263,7 +290,7 @@ function marketList(params) {
     bought: { purchases: [], tracks: [] },
     sales: [],
     bigSales: [],
-    wanted: [],
+    wanted: WANTED,
   };
 }
 
@@ -291,6 +318,7 @@ export function respond(path) {
   if (p === '/api/auctions') return AUCTIONS;
   if (p === '/api/faceoff') return FACEOFF;
   if (p === '/api/artists') return artistsPage(url.searchParams);
+  if (p === '/api/wall') return WALL;
   if (p === '/api/market') return marketList(url.searchParams);
   const m = p.match(/^\/api\/market\/(\d+)$/);
   if (m) return detail(m[1]);

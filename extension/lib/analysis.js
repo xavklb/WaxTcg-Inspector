@@ -286,6 +286,105 @@ export function collectionCandidates({ tracks, stats, protectedArtists = [], hyp
   return out.sort((a, b) => (b.duplicates > 0) - (a.duplicates > 0) || b.value - a.value);
 }
 
+// ---------------------------------------------------------------- Cartes demandées
+
+const WISHES_HOT = 100; // au-delà, une carte sans vendeur peut viser le prix maximum autorisé
+
+/**
+ * Cartes demandées que je possède, en croisant :
+ * - `wanted` : les cartes les plus souhaitées du Marché ({track, wishes, best}, /api/market) ;
+ * - `wallPosts` : les annonces du mur WAX FM ({kind: 'want' | 'give', track, who, note, at, mine}, /api/wall).
+ * Renvoie `mine` (cartes que j'ai, à vendre) et `others` (les plus souhaitées que je n'ai pas).
+ */
+export function demandCandidates({ wanted = [], wallPosts = [], tracks = [], stats = {}, protectedArtists = [] }) {
+  const ownedTracks = new Map((tracks ?? []).filter((t) => t?.id).map((t) => [String(t.id), t]));
+  const protectedIds = new Set((protectedArtists ?? []).map(String));
+  const byId = new Map();
+  const entry = (track) => {
+    const id = String(track.id);
+    if (!byId.has(id)) byId.set(id, { track: ownedTracks.get(id) ?? track, wishes: 0, marketBest: null, topWanted: false, posts: [] });
+    return byId.get(id);
+  };
+  for (const w of wanted ?? []) {
+    if (!w?.track?.id) continue;
+    const e = entry(w.track);
+    e.wishes = Number(w.wishes) || 0;
+    e.marketBest = w.best ?? null;
+    e.topWanted = true;
+  }
+  for (const p of wallPosts ?? []) {
+    if (p?.kind !== 'want' || p.mine || !p.track?.id) continue;
+    entry(p.track).posts.push({ who: p.who ?? '', note: p.note ?? '', at: p.at ?? null });
+  }
+
+  const mine = [];
+  const others = [];
+  for (const e of byId.values()) {
+    const id = String(e.track.id);
+    const copies = (stats?.copies?.[id] ?? []).map(([serial, origin]) => ({ serial, origin }));
+    const posts = e.posts.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
+    const base = { track: e.track, wishes: e.wishes, topWanted: e.topWanted, marketBest: e.marketBest, posts, requests: posts.length };
+    if (!copies.length) {
+      if (e.topWanted) others.push(base);
+      continue;
+    }
+    const locked = new Set(stats?.lockedSerials?.[id] ?? []);
+    const bySerialDesc = [...copies].sort((a, b) => b.serial - a.serial);
+    const sell = bySerialDesc.find((c) => !locked.has(c.serial)) ?? bySerialDesc[0];
+    mine.push({
+      ...base,
+      owned: copies.length,
+      value: stats?.values?.[id] ?? null,
+      sellSerial: sell.serial,
+      lastCopy: copies.length === 1,
+      favorite: locked.size > 0,
+      favoriteSerials: [...locked].sort((a, b) => a - b),
+      sellIsFavorite: locked.has(sell.serial),
+      protectedArtist: protectedIds.has(String(e.track.artistId)),
+    });
+  }
+  mine.sort((a, b) => b.wishes - a.wishes || b.requests - a.requests || (b.value ?? 0) - (a.value ?? 0));
+  others.sort((a, b) => b.wishes - a.wishes);
+  return { mine, others };
+}
+
+/**
+ * Prix conseillé pour une carte demandée :
+ * - quelqu'un en vend → juste sous le moins cher ;
+ * - personne n'en vend → prime de demande sur la cote : ×2 (maximum autorisé) si plus de 100 souhaits,
+ *   ×1,5 si plusieurs joueurs la cherchent ou si elle est souhaitée, ×1,25 sinon.
+ */
+export function evaluateDemandSale(cand, detail, now) {
+  const others = otherListings(detail?.listings);
+  const stats = salesStats(detail?.history, now);
+  const quote = detail?.quote ?? cand.value ?? 0;
+  const range = detail?.range ?? allowedRange(quote, cand.track.rarity);
+  const cheapestOther = others[0]?.price ?? null;
+  const fairPrice = clamp(Math.round(stats.recentMedian ?? quote), range.min, range.max);
+  let premium = null;
+  let price;
+  if (cheapestOther == null) {
+    premium = cand.wishes >= WISHES_HOT ? MARKET.above : cand.requests >= 2 || cand.wishes > 0 ? 1.5 : 1.25;
+    price = clamp(Math.round(Math.max(fairPrice, quote) * premium), range.min, range.max);
+  } else {
+    price = clamp(cheapestOther - 1, range.min, range.max);
+  }
+  return {
+    ...cand,
+    quote,
+    range,
+    stats,
+    cheapestOther,
+    competitors: others.length,
+    premium,
+    price,
+    net: netAfterTax(price),
+    fairPrice,
+    fairNet: netAfterTax(fairPrice),
+    verdict: cheapestOther == null ? 'no-seller' : 'compete',
+  };
+}
+
 /** Prix conseillés pour une carte de ma collection, avec la fiche détaillée du titre. */
 export function evaluateSale(candidate, detail, now) {
   const others = otherListings(detail?.listings);
