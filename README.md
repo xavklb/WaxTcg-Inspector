@@ -21,7 +21,7 @@ Le prix de revente ne se fie pas à la cote seule. Il prend la médiane des 5 de
 
 - `content.js` n'accepte que des requêtes **GET** vers une liste fermée de routes de consultation (`/api/game`, `/api/stats`, `/api/auctions`, `/api/faceoff`, `/api/wall`, `/api/artists?…`, `/api/search?q=…`, `/api/market…`, `/api/cards/{id}`). L'onglet SNEP lit aussi le site public `snepmusique.com` (permission d'hôte dédiée, lecture seule).. Acheter, vendre ou enchérir est impossible par construction.
 - Une requête à la fois, avec au moins 400 ms entre deux (700 ms par défaut), et un cache de 2 à 5 minutes. Une analyse fait environ 5 à 45 requêtes.
-- Rien ne tourne en arrière-plan : aucune requête sans clic sur « Analyser ».
+- Aucune requête sans clic sur « Analyser ». Seul le **solde affiché en haut du panneau** (Mélodies, gemmes) est suivi en continu, mais sans requête : `content.js` relit toutes les 1,5 s les chiffres déjà affichés par la page WAX, et prévient le panneau quand ils changent (point vert = en direct).
 
 ## Installation
 

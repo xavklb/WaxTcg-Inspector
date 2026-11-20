@@ -44,6 +44,11 @@
       return true; // réponse asynchrone
     }
 
+    if (msg.type === 'wax-inspector:wallet?') {
+      sendResponse(readWallet());
+      return false;
+    }
+
     if (msg.type === 'wax-inspector:open-card') {
       const id = String(msg.id ?? '');
       if (/^\d+$/.test(id)) location.hash = `#carte/${id}`;
@@ -53,4 +58,26 @@
 
     return false;
   });
+
+  // Solde affiché en haut de la page (Mélodies, gemmes) : relu à l'écran, sans aucune requête,
+  // et envoyé au panneau seulement quand il change.
+  function readWallet() {
+    const text = (selector) => document.querySelector(selector)?.textContent?.trim() ?? null;
+    return { notes: text('button.chip-notes .anum'), gems: text('button.chip-gems .anum'), at: Date.now() };
+  }
+
+  let lastWallet = '';
+  const walletTimer = setInterval(() => {
+    const wallet = readWallet();
+    const key = `${wallet.notes}|${wallet.gems}`;
+    if (key === lastWallet || (wallet.notes == null && wallet.gems == null)) return;
+    lastWallet = key;
+    try {
+      chrome.runtime.sendMessage({ type: 'wax-inspector:wallet', wallet }).catch(() => {
+        // panneau fermé : personne n'écoute
+      });
+    } catch {
+      clearInterval(walletTimer); // extension rechargée : ce script n'est plus relié à elle
+    }
+  }, 1500);
 })();
