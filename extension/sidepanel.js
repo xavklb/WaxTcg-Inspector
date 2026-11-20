@@ -234,6 +234,72 @@ function saleCard(r) {
   );
 }
 
+function demandCard(r) {
+  const plural = (n, one, many) => (n > 1 ? many : one);
+  const advice =
+    r.verdict === 'no-seller'
+      ? `Personne n’en vend : mets-la à ${notes(r.price)} (${r.premium === 2 ? 'le maximum autorisé, 2× la cote' : `${String(r.premium).replace('.', ',')}× la cote`}), tu toucheras ${notes(r.net)}.`
+      : `${r.competitors} autre${plural(r.competitors, '', 's')} en vente dès ${notes(r.cheapestOther)} : passe juste devant à ${notes(r.price)} (tu toucheras ${notes(r.net)}).`;
+  const badges = [
+    r.verdict === 'no-seller' ? badge('Personne n’en vend', 'good') : badge('Demandée', 'good'),
+    r.sellIsFavorite ? badge('❤ Coup de cœur', 'bad') : null,
+    r.protectedArtist ? badge('🛡 Artiste protégé', 'bad') : null,
+    badge(`vends le n°${r.sellSerial}`),
+    r.owned > 1 ? badge(`${r.owned} exemplaires`) : null,
+    !r.sellIsFavorite && r.favoriteSerials?.length ? badge(`❤ n°${r.favoriteSerials.join(', ')} en coup de cœur`) : null,
+  ].filter(Boolean);
+  return card(
+    r.track,
+    [
+      row('Prix conseillé', notes(r.price), `tu touches ${notes(r.net)}`),
+      row('Prix cote', notes(r.fairPrice), `tu touches ${notes(r.fairNet)}`),
+      meta([
+        r.wishes ? `${fmt(r.wishes)} joueur${plural(r.wishes, '', 's')} la souhaite${plural(r.wishes, '', 'nt')}` : null,
+        r.requests ? `${r.requests} annonce${plural(r.requests, '', 's')} « Cherche »` : null,
+        ...salesMeta(r.stats),
+      ]),
+      r.posts.slice(0, 3).map((p) =>
+        h('p', { class: 'quote-post' }, h('b', null, p.who || 'Un joueur'), ' cherche cette carte', p.at ? ` (${ago(p.at)})` : '', p.note ? ` : « ${p.note} »` : ''),
+      ),
+      h('p', { class: 'advice' }, advice, r.requests ? ` Tu peux aussi ${r.requests > 1 ? 'leur' : 'lui'} proposer un échange depuis WAX FM.` : ''),
+      r.sellIsFavorite ? h('p', { class: 'reasons' }, `Le n°${r.sellSerial} est en coup de cœur : retire le cœur avant de la vendre.`) : null,
+      r.protectedArtist ? h('p', { class: 'reasons' }, `Tu as protégé ${r.track.artist || 'cet artiste'} : vérifie que tu veux vraiment vendre.`) : null,
+      r.lastCopy ? h('p', { class: 'reasons' }, `Dernier exemplaire : ta valeur de collection baissera d’environ ${notes(r.value ?? r.quote)}.`) : null,
+    ],
+    badges,
+  );
+}
+
+function demandSection(res) {
+  if (!res.demand) return null; // analyse enregistrée avant l'ajout de cette section
+  const others = res.demandOthers ?? [];
+  return [
+    h('h2', { class: 'section' }, `Cartes demandées que tu as (${res.demand.length}${res.demandCount > res.demand.length ? ` sur ${res.demandCount}` : ''})`),
+    res.demand.length
+      ? res.demand.map(demandCard)
+      : h('p', { class: 'empty' }, `Aucune de tes cartes n’est parmi les plus souhaitées ni cherchée sur WAX FM en ce moment (${res.wantPosts ?? 0} annonces « Cherche » lues).`),
+    others.length
+      ? h(
+          'details',
+          { class: 'rejected' },
+          h('summary', null, `Les plus souhaitées du Marché, que tu n’as pas (${others.length})`),
+          h(
+            'div',
+            { class: 'sheet' },
+            others.map((o) =>
+              h(
+                'div',
+                { class: 'row' },
+                h('span', { class: 'k' }, `${o.track.title} – ${o.track.artist}`),
+                h('span', { class: 'v num' }, `${fmt(o.wishes)} souhaits · ${o.marketBest != null ? `dès ${notes(o.marketBest)}` : 'aucune en vente'}`),
+              ),
+            ),
+          ),
+        )
+      : null,
+  ];
+}
+
 async function copyText(text, textarea) {
   try {
     await navigator.clipboard.writeText(text);
@@ -331,6 +397,7 @@ function renderSell(res) {
       res.collectionValue != null ? `Collection ${fmt(res.collectionValue)}` : null,
       res.rank != null ? `Rang ${fmt(res.rank)} / ${fmt(res.players)}` : null,
     ].filter(Boolean).map((t) => h('span', null, t))),
+    demandSection(res),
     h('h2', { class: 'section' }, `Mes annonces (${res.listings.length})`),
     res.listings.length ? res.listings.map(listingCard) : h('p', { class: 'empty' }, 'Aucune annonce en cours.'),
     announcePanel(res),
@@ -474,7 +541,7 @@ const VIEWS = {
   },
   sell: {
     label: 'Vendre',
-    intro: 'Tes annonces dépassées ou trop basses, puis tes doublons et tes cartes en pleine hype à vendre.',
+    intro: 'Tes cartes que d’autres joueurs cherchent, tes annonces dépassées ou trop basses, puis tes doublons et tes cartes en pleine hype à vendre.',
     run: runSell,
     render: renderSell,
   },

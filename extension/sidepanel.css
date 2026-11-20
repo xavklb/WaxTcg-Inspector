@@ -335,6 +335,21 @@ details.rejected .card {
   background: var(--surface);
 }
 
+.sheet .row {
+  min-width: 0;
+}
+
+.sheet .row .k {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet .row .v {
+  flex: none;
+}
+
 .sheet-item {
   min-width: 0;
   padding: 4px 0;
@@ -358,6 +373,17 @@ details.rejected .card {
   margin: 14px 0 0;
   color: var(--muted);
   font-size: 12px;
+}
+
+/* Cartes demandées */
+.quote-post {
+  margin: 6px 0 0;
+  padding: 5px 8px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 /* Annonce pour le chat du label */

@@ -4,7 +4,9 @@ import { FACEOFF, MARKET, RARITIES, RARITY } from './constants.js';
 import { buildCards, cheatSheet, deckPoints, deckStrength, findBestDeck, isValidDeck } from './deck.js';
 import {
   collectionCandidates,
+  demandCandidates,
   evaluateAuction,
+  evaluateDemandSale,
   evaluateFlip,
   evaluateSale,
   reviewListing,
@@ -213,6 +215,29 @@ export async function runSell(api, settings, { now = Date.now, progress = () => 
     sales.push(evaluateSale(c, detail, clock()));
   }
 
+  // Cartes demandées : les plus souhaitées du Marché et les annonces « Cherche » du mur WAX FM.
+  progress('Lecture des cartes demandées…');
+  let wallPosts = [];
+  try {
+    wallPosts = (await api.get('/api/wall', { ttlMs: 30_000 }))?.posts ?? [];
+  } catch (e) {
+    if (e?.code === 'ABORTED') throw e;
+  }
+  const demandAll = demandCandidates({
+    wanted: market?.wanted ?? [],
+    wallPosts,
+    tracks: game?.tracks ?? [],
+    stats,
+    protectedArtists: game?.state?.protectArtists ?? [],
+  });
+  const demandTop = demandAll.mine.slice(0, Math.min(10, settings.maxDetails));
+  const demand = [];
+  for (const [i, c] of demandTop.entries()) {
+    progress(`Cartes demandées : ${c.track.title} (${i + 1}/${demandTop.length})…`);
+    const detail = await api.get(`/api/market/${c.track.id}`, { ttlMs: DETAIL_TTL });
+    demand.push(evaluateDemandSale(c, detail, clock()));
+  }
+
   return {
     at: now(),
     wallet: wallet(game),
@@ -225,5 +250,9 @@ export async function runSell(api, settings, { now = Date.now, progress = () => 
     candidates: candidates.length,
     checked: top.length,
     sales,
+    demand,
+    demandCount: demandAll.mine.length,
+    demandOthers: demandAll.others,
+    wantPosts: wallPosts.filter((p) => p?.kind === 'want' && !p.mine).length,
   };
 }
