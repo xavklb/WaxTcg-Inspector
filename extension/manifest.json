@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "WAX Inspector",
+  "version": "0.1.0",
+  "description": "Aide à la décision pour le Marché de WAX : quoi acheter, quoi vendre, à quel prix. Lecture seule : n'achète et ne vend jamais à ta place.",
+  "minimum_chrome_version": "116",
+  "permissions": ["sidePanel", "storage"],
+  "host_permissions": ["https://waxtcg.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Ouvrir WAX Inspector" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://waxtcg.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

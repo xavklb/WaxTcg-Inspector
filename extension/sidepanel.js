@@ -1,0 +1,425 @@
+import { WaxApi } from './lib/api.js';
+import { runAuctions, runBuy, runSell } from './lib/runs.js';
+import { DEFAULT_SETTINGS, MIN_DELAY_MS, RARITY, normalizeSettings } from './lib/constants.js';
+import { ago, duration, fmt, pct } from './lib/format.js';
+
+const DAY = 86_400_000;
+const app = document.getElementById('app');
+const api = new WaxApi();
+
+const state = {
+  tab: 'buy',
+  settings: { ...DEFAULT_SETTINGS },
+  results: {},
+  running: null,
+  progress: '',
+  error: null,
+  requests: 0,
+};
+
+// ------------------------------------------------------------------ stockage
+
+const store = {
+  async get(key) {
+    try {
+      return (await chrome.storage.local.get(key))[key];
+    } catch {
+      return undefined;
+    }
+  },
+  async set(key, value) {
+    try {
+      await chrome.storage.local.set({ [key]: value });
+    } catch {
+      // stockage indisponible : on garde l'état en mémoire
+    }
+  },
+};
+
+// ------------------------------------------------------------------ DOM
+
+function h(tag, props, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props ?? {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'style') for (const [p, val] of Object.entries(v)) el.style.setProperty(p, val);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat(Infinity)) {
+    if (c == null || c === false) continue;
+    el.append(c instanceof Node ? c : String(c));
+  }
+  return el;
+}
+
+const notes = (n) => `${fmt(n)} ♫`;
+
+function row(k, ...v) {
+  return h('div', { class: 'row' }, h('span', { class: 'k' }, k), h('span', { class: 'v num' }, v.filter(Boolean).join(' · ')));
+}
+
+function meta(items) {
+  return h('div', { class: 'meta num' }, items.filter(Boolean).map((t) => h('span', null, t)));
+}
+
+function profitLine(profit, roi) {
+  return h('div', { class: `profit num${profit < 0 ? ' neg' : ''}` }, `${profit >= 0 ? '+' : ''}${notes(profit)} net (${pct(roi)})`);
+}
+
+function salesMeta(stats) {
+  const liq = stats.count7d ? `${stats.count7d} vente${stats.count7d > 1 ? 's' : ''} / 7 j` : 'aucune vente / 7 j';
+  return [liq, stats.lastAt ? `dernière ${ago(stats.lastAt)}` : null];
+}
+
+async function openCard(id) {
+  try {
+    await api.openCard(id);
+  } catch (e) {
+    state.error = e?.message ?? String(e);
+    render();
+  }
+}
+
+function card(track, body, badges = []) {
+  const rar = RARITY[track?.rarity] ?? { label: track?.rarity ?? '?', color: '#888' };
+  return h(
+    'article',
+    { class: 'card', style: { '--rc': rar.color } },
+    h(
+      'header',
+      { class: 'card-head' },
+      h('span', { class: 'chip' }, rar.label),
+      h('div', { class: 'titles' }, h('strong', { title: track?.title }, track?.title ?? '?'), h('span', { class: 'artist' }, track?.artist ?? '')),
+      h('button', { class: 'btn small', title: 'Ouvrir la fiche de la carte sur WAX', onclick: () => openCard(track.id) }, 'Ouvrir'),
+    ),
+    badges.length ? h('div', { class: 'meta' }, badges) : null,
+    body,
+  );
+}
+
+const badge = (text, kind = '') => h('span', { class: `badge ${kind}` }, text);
+
+// ------------------------------------------------------------------ vues
+
+function flipCard(r) {
+  return card(r.track, [
+    row('Acheter', notes(r.buy.price), r.buy.serial ? `n°${r.buy.serial}` : null),
+    row('Prix d’achat max', notes(r.maxBuy)),
+    row('Revendre à', `~${notes(r.resale)}`, `tu touches ${notes(r.net)}`),
+    profitLine(r.profit, r.roi),
+    meta([
+      ...salesMeta(r.stats),
+      r.daysToSell != null ? `revente ~${duration(r.daysToSell * DAY)}` : 'revente incertaine',
+      `cote ${fmt(r.quote)}`,
+      `${r.competitors} en vente`,
+    ]),
+    r.reasons.length ? h('p', { class: 'reasons' }, r.reasons.join(' · ')) : null,
+  ]);
+}
+
+function renderBuy(res) {
+  const good = res.results.filter((r) => r.ok);
+  const rest = res.results.filter((r) => !r.ok);
+  return [
+    h('p', { class: 'summary num' }, [
+      `Budget ${notes(res.budget)}`,
+      `${fmt(res.scanned)} titres lus`,
+      `${fmt(res.screened)} pistes`,
+      `${res.checked} vérifiées`,
+    ].map((t) => h('span', null, t))),
+    good.length ? good.map(flipCard) : h('p', { class: 'empty' }, 'Aucune bonne affaire avec tes réglages pour l’instant.'),
+    rest.length ? h('details', { class: 'rejected' }, h('summary', null, `Écartées après vérification (${rest.length})`), rest.map(flipCard)) : null,
+  ];
+}
+
+function auctionCard(r) {
+  const a = r.auction;
+  return card(
+    r.track,
+    [
+      row('Enchère actuelle', notes(a.bid ?? a.start), `${a.bids ?? 0} mise${(a.bids ?? 0) > 1 ? 's' : ''}`),
+      row('Prochaine mise', notes(r.price)),
+      row('Mise max conseillée', notes(r.maxBid)),
+      row('Revendre à', `~${notes(r.resale)}`, `tu touches ${notes(r.net)}`),
+      profitLine(r.profit, r.roi),
+      meta([...salesMeta(r.stats), `cote ${fmt(r.quote)}`, `achat immédiat ${fmt(a.max)}`]),
+      r.reasons.length ? h('p', { class: 'reasons' }, r.reasons.join(' · ')) : null,
+    ],
+    [badge(`fin dans ${duration(r.endsInMs)}`, r.endsInMs < 15 * 60_000 ? 'warn' : ''), a.serial ? badge(`n°${a.serial}`) : null].filter(Boolean),
+  );
+}
+
+function renderAuctions(res) {
+  const good = res.results.filter((r) => r.ok);
+  const rest = res.results.filter((r) => !r.ok);
+  return [
+    h('p', { class: 'summary num' }, [`Budget ${notes(res.budget)}`, `${res.open} enchères ouvertes`, `${res.screened} pistes`, `${res.checked} vérifiées`].map((t) => h('span', null, t))),
+    good.length ? good.map(auctionCard) : h('p', { class: 'empty' }, 'Aucune enchère intéressante dans la fenêtre choisie.'),
+    rest.length ? h('details', { class: 'rejected' }, h('summary', null, `Écartées après vérification (${rest.length})`), rest.map(auctionCard)) : null,
+  ];
+}
+
+function listingCard(r) {
+  const l = r.listing;
+  let advice;
+  if (r.status === 'undercut') {
+    advice = r.cantBeat
+      ? `Un autre vendeur est à ${notes(r.cheapestOther)}, déjà au prix plancher : impossible de passer devant. Attends ou garde-la.`
+      : `Un autre vendeur est à ${notes(r.cheapestOther)}. Retire-la et remets-la à ${notes(r.suggested)} (tu toucheras ${notes(r.suggestedNet)}).`;
+  } else if (r.status === 'low') {
+    advice = `Les dernières ventes sont autour de ${notes(r.stats.recentMedian)}. Tu peux la remettre à ${notes(r.suggested)} (tu toucheras ${notes(r.suggestedNet)}).`;
+  } else {
+    advice = 'Bien placée : c’est la moins chère, au niveau des ventes récentes.';
+  }
+  const status = { undercut: badge('Dépassée', 'bad'), low: badge('Prix bas', 'warn'), ok: badge('OK', 'good') }[r.status];
+  return card(
+    r.track,
+    [
+      row('Mon prix', notes(l.price), `je touche ${notes(r.net)}`),
+      meta([...salesMeta(r.stats), `cote ${fmt(r.quote)}`, `${r.competitors} autre${r.competitors > 1 ? 's' : ''} en vente`]),
+      h('p', { class: 'advice' }, advice),
+    ],
+    [status, r.expiringSoon ? badge(`expire dans ${duration(r.hoursLeft * 3_600_000)}`, 'warn') : null].filter(Boolean),
+  );
+}
+
+function saleCard(r) {
+  const verdicts = {
+    recycle: [badge('Recycler', 'warn'), `La vente rapporterait moins que le recyclage (${notes(r.recycle)}).`],
+    illiquid: [badge('Peu demandée', 'warn'), 'Aucune vente sur 7 jours : mets-la au prix cote et sois patient.'],
+    'sell-fast': [badge('Vendre vite', 'bad'), `Les prix baissent (${pct(r.stats.momentum)} sur les dernières ventes) : vends au prix rapide.`],
+    sell: [badge('Vendre', 'good'), 'Prix rapide pour partir vite, prix cote pour gagner plus.'],
+  };
+  const [verdictBadge, advice] = verdicts[r.verdict];
+  const badges = [
+    verdictBadge,
+    r.duplicates > 0 ? badge(`doublon ×${r.duplicates}`) : badge(`hype ×${r.ratio.toFixed(1)}`),
+    badge(`vends le n°${r.sellSerial}`),
+    r.upgradedFrom ? badge(`montée (tirée en ${RARITY[r.upgradedFrom]?.label ?? r.upgradedFrom})`, 'good') : null,
+  ].filter(Boolean);
+  return card(
+    r.track,
+    [
+      row('Prix rapide', notes(r.fastPrice), `tu touches ${notes(r.fastNet)}`),
+      row('Prix cote', notes(r.fairPrice), `tu touches ${notes(r.fairNet)}`),
+      meta([
+        ...salesMeta(r.stats),
+        r.cheapestOther != null ? `moins cher en vente ${fmt(r.cheapestOther)}` : 'personne d’autre en vente',
+        r.duplicates > 0 ? `recyclage ${fmt(r.recycle)}` : null,
+      ]),
+      h('p', { class: 'advice' }, advice),
+      r.lastCopy ? h('p', { class: 'reasons' }, `Dernier exemplaire : ta valeur de collection baissera d’environ ${notes(r.value)}.`) : null,
+    ],
+    badges,
+  );
+}
+
+function renderSell(res) {
+  return [
+    h('p', { class: 'summary num' }, [
+      `Annonces ${res.openCount}/${res.maxOpen}`,
+      res.collectionValue != null ? `Collection ${fmt(res.collectionValue)}` : null,
+      res.rank != null ? `Rang ${fmt(res.rank)} / ${fmt(res.players)}` : null,
+    ].filter(Boolean).map((t) => h('span', null, t))),
+    h('h2', { class: 'section' }, `Mes annonces (${res.listings.length})`),
+    res.listings.length ? res.listings.map(listingCard) : h('p', { class: 'empty' }, 'Aucune annonce en cours.'),
+    h('h2', { class: 'section' }, `À mettre en vente (${res.sales.length}${res.candidates > res.checked ? ` sur ${res.candidates}` : ''})`),
+    res.sales.length
+      ? res.sales.map(saleCard)
+      : h('p', { class: 'empty' }, 'Ni doublon, ni carte en pleine hype dans ta collection (hors coups de cœur).'),
+  ];
+}
+
+const VIEWS = {
+  buy: {
+    label: 'Acheter',
+    intro: 'Titres en vente sous leur prix de revente réaliste, vérifiés sur les ventes récentes. Tu achètes toi-même sur le site.',
+    run: runBuy,
+    render: renderBuy,
+  },
+  auctions: {
+    label: 'Enchères',
+    intro: 'Enchères (Or et plus) qui se terminent bientôt sous leur valeur de revente, avec ta mise maximale.',
+    run: runAuctions,
+    render: renderAuctions,
+  },
+  sell: {
+    label: 'Vendre',
+    intro: 'Tes annonces dépassées ou trop basses, puis tes doublons et tes cartes en pleine hype à vendre.',
+    run: runSell,
+    render: renderSell,
+  },
+};
+
+const FIELDS = [
+  { key: 'budget', label: 'Budget max (♫)', hint: '0 = toutes tes Mélodies', step: 10 },
+  { key: 'minProfit', label: 'Gain net minimum (♫)', step: 5 },
+  { key: 'minRoi', label: 'Rendement minimum (%)', step: 1, percent: true },
+  { key: 'minSales7d', label: 'Ventes minimum du titre sur 7 jours', hint: 'Évite les cartes qu’on n’arrive pas à revendre', step: 1 },
+  { key: 'maxDetails', label: 'Cartes vérifiées par analyse', hint: '1 requête par carte, 50 au plus', step: 1 },
+  { key: 'delayMs', label: 'Pause entre deux requêtes (ms)', hint: `${MIN_DELAY_MS} ms au moins`, step: 100 },
+  { key: 'hypeRatio', label: 'Seuil « hype » (× cote de base de la rareté)', step: 0.5 },
+  { key: 'auctionHorizonMin', label: 'Enchères qui finissent dans (minutes)', step: 5 },
+];
+
+function settingsView() {
+  const inputs = {};
+  const form = h(
+    'form',
+    {
+      class: 'settings',
+      onsubmit: async (e) => {
+        e.preventDefault();
+        const raw = {};
+        for (const f of FIELDS) {
+          const v = inputs[f.key].value;
+          raw[f.key] = f.percent && v !== '' ? Number(v) / 100 : v;
+        }
+        state.settings = normalizeSettings(raw);
+        await store.set('settings', state.settings);
+        state.saved = true;
+        render();
+      },
+    },
+    FIELDS.map((f) => {
+      const value = f.percent ? Math.round(state.settings[f.key] * 100) : state.settings[f.key];
+      inputs[f.key] = h('input', { id: `f-${f.key}`, type: 'number', step: f.step, min: 0, value });
+      return h('div', { class: 'field' }, h('label', { for: `f-${f.key}` }, f.label), f.hint ? h('span', { class: 'hint' }, f.hint) : null, inputs[f.key]);
+    }),
+    h(
+      'div',
+      { class: 'actions' },
+      h('button', { class: 'btn primary', type: 'submit' }, 'Enregistrer'),
+      h(
+        'button',
+        {
+          class: 'btn',
+          type: 'button',
+          onclick: async () => {
+            state.settings = { ...DEFAULT_SETTINGS };
+            await store.set('settings', state.settings);
+            render();
+          },
+        },
+        'Valeurs par défaut',
+      ),
+      state.saved ? h('span', { class: 'progress' }, 'Enregistré.') : null,
+    ),
+  );
+  state.saved = false;
+  return form;
+}
+
+function runView(tab) {
+  const view = VIEWS[tab];
+  const res = state.results[tab];
+  const running = state.running === tab;
+  return [
+    h('p', { class: 'intro' }, view.intro),
+    h(
+      'div',
+      { class: 'actions' },
+      running
+        ? h('button', { class: 'btn', onclick: () => api.abort() }, 'Arrêter')
+        : h('button', { class: 'btn primary', disabled: Boolean(state.running), onclick: () => start(tab) }, 'Analyser'),
+      h('span', { class: 'progress', id: 'progress' }, running ? state.progress : res ? `Analyse ${ago(res.at)}` : ''),
+    ),
+    state.error && state.errorTab === tab ? h('div', { class: 'error', role: 'alert' }, state.error) : null,
+    res ? view.render(res) : h('p', { class: 'empty' }, 'Lance une analyse. Garde un onglet waxtcg.com ouvert et connecté.'),
+  ];
+}
+
+function header() {
+  const w = Object.values(state.results).filter(Boolean).sort((a, b) => b.at - a.at)[0]?.wallet;
+  return h(
+    'div',
+    { class: 'top' },
+    h(
+      'div',
+      { class: 'brand' },
+      h('h1', null, h('span', null, 'WAX'), ' Inspector'),
+      h(
+        'div',
+        { class: 'wallet num' },
+        w ? h('span', { class: 'pill', title: 'Mélodies' }, notes(w.notes)) : null,
+        w ? h('span', { class: 'pill', title: 'Gemmes' }, `${fmt(w.gems)} 💎`) : null,
+      ),
+    ),
+    h(
+      'nav',
+      { class: 'tabs', role: 'tablist' },
+      [...Object.entries(VIEWS).map(([id, v]) => [id, v.label]), ['settings', 'Réglages']].map(([id, label]) =>
+        h(
+          'button',
+          {
+            class: 'tab',
+            role: 'tab',
+            'aria-selected': String(state.tab === id),
+            onclick: () => {
+              state.tab = id;
+              render();
+            },
+          },
+          label,
+        ),
+      ),
+    ),
+  );
+}
+
+function footer() {
+  return h(
+    'footer',
+    { class: 'foot' },
+    `Lecture seule : l’extension ne peut ni acheter ni vendre. ${state.requests} requête${state.requests > 1 ? 's' : ''} depuis l’ouverture du panneau. `,
+    'Les règles de WAX interdisent les scripts : analyse avec modération.',
+  );
+}
+
+function render() {
+  app.replaceChildren(header(), h('main', { class: 'panel' }, state.tab === 'settings' ? settingsView() : runView(state.tab)), footer());
+}
+
+// ------------------------------------------------------------------ actions
+
+async function start(tab) {
+  state.running = tab;
+  state.error = null;
+  state.progress = 'Démarrage…';
+  api.reset();
+  api.delayMs = state.settings.delayMs;
+  render();
+  try {
+    const res = await VIEWS[tab].run(api, state.settings, {
+      progress: (msg) => {
+        state.progress = msg;
+        const el = document.getElementById('progress');
+        if (el) el.textContent = msg;
+      },
+    });
+    state.results[tab] = res;
+    await store.set('results', state.results);
+  } catch (e) {
+    state.error = e?.message ?? String(e);
+    state.errorTab = tab;
+  } finally {
+    state.running = null;
+    render();
+  }
+}
+
+api.onRequest = (n) => {
+  state.requests = n;
+  const foot = app.querySelector('.foot');
+  if (foot) foot.replaceWith(footer());
+};
+
+async function init() {
+  state.settings = normalizeSettings(await store.get('settings'));
+  state.results = (await store.get('results')) ?? {};
+  render();
+}
+
+init();
