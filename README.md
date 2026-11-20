@@ -10,7 +10,7 @@ Extension Chrome d'**aide à la décision** pour le Marché de [WAX](https://wax
 |---|---|
 | **Acheter** | Les titres en vente sous leur prix de revente réaliste. Pour chacun : prix d'achat max, prix de revente, gain net après la taxe de 5 %, nombre de ventes sur 7 jours et délai de revente estimé. |
 | **Enchères** | Les enchères (Or et plus) qui se terminent bientôt sous leur valeur de revente, avec la mise maximale à ne pas dépasser. |
-| **Vendre** | Tes annonces dépassées par un autre vendeur ou trop basses, avec le prix conseillé. Puis tes doublons et tes cartes « hype » à vendre, avec un prix rapide et un prix cote. Une carte en **coup de cœur ❤** ou d'un **artiste protégé 🛡** est signalée par un badge et un avertissement. |
+| **Vendre** | Tes annonces dépassées par un autre vendeur ou trop basses, avec le prix conseillé. Puis tes doublons et tes cartes « hype » à vendre, avec un prix rapide et un prix cote. Une carte en **coup de cœur ❤** ou d'un **artiste protégé 🛡** est signalée par un badge et un avertissement. Enfin, une **annonce pour le chat du label** à copier : format réglable, nombre de titres, majuscules, 240 caractères au plus. L'extension ne l'envoie jamais elle-même. |
 | **Deck** | Face to Face : le deck de 5 cartes de ta collection qui couvre le mieux les 9 critères (20 points au plus, 2 cartes par artiste), comparé à ton deck actuel. Plus une antisèche : la carte à poser pour chaque critère. Les notes sont **estimées** (le jeu ne les dévoile que pendant une partie). |
 | **Réglages** | Budget, gain et rendement minimum, ventes minimum, nombre de cartes vérifiées, pause entre deux requêtes… |
 
