@@ -1,6 +1,7 @@
 import { WaxApi } from './lib/api.js';
 import { runAuctions, runBuy, runDeck, runSell, runSnep } from './lib/runs.js';
 import { strengths } from './lib/deck.js';
+import { parseWallet } from './lib/wallet.js';
 import {
   ANNOUNCE_PLACEHOLDERS,
   CHAT_MAX_LENGTH,
@@ -800,22 +801,31 @@ function runView(tab) {
   ];
 }
 
+/** Solde : en direct depuis la page WAX si elle est ouverte, sinon celui de la dernière analyse. */
+function walletView() {
+  const live = state.liveWallet;
+  const w = live ?? Object.values(state.results).filter(Boolean).sort((a, b) => b.at - a.at)[0]?.wallet;
+  const source = live ? 'en direct depuis la page WAX' : 'à la dernière analyse';
+  return h(
+    'div',
+    { class: `wallet num${live ? ' live' : ''}`, 'aria-live': 'polite' },
+    w?.notes != null ? h('span', { class: 'pill', title: `Mélodies, ${source}` }, notes(w.notes)) : null,
+    w?.gems != null ? h('span', { class: 'pill', title: `Gemmes, ${source}` }, `${fmt(w.gems)} 💎`) : null,
+  );
+}
+
+function setLiveWallet(raw) {
+  const wallet = parseWallet(raw);
+  if (!wallet) return;
+  state.liveWallet = wallet;
+  app.querySelector('.wallet')?.replaceWith(walletView());
+}
+
 function header() {
-  const w = Object.values(state.results).filter(Boolean).sort((a, b) => b.at - a.at)[0]?.wallet;
   return h(
     'div',
     { class: 'top' },
-    h(
-      'div',
-      { class: 'brand' },
-      h('h1', null, h('span', null, 'WAX'), ' Inspector'),
-      h(
-        'div',
-        { class: 'wallet num' },
-        w ? h('span', { class: 'pill', title: 'Mélodies' }, notes(w.notes)) : null,
-        w ? h('span', { class: 'pill', title: 'Gemmes' }, `${fmt(w.gems)} 💎`) : null,
-      ),
-    ),
+    h('div', { class: 'brand' }, h('h1', null, h('span', null, 'WAX'), ' Inspector'), walletView()),
     h(
       'nav',
       { class: 'tabs', role: 'tablist' },
@@ -894,6 +904,17 @@ async function init() {
   state.announce = normalizeAnnounce(await store.get('announce'));
   state.results = (await store.get('results')) ?? {};
   render();
+  // Solde en direct : la page WAX l'envoie à chaque changement ; on lui demande la valeur actuelle à l'ouverture.
+  try {
+    const tab = await api.findTab();
+    setLiveWallet(await chrome.tabs.sendMessage(tab.id, { type: 'wax-inspector:wallet?' }));
+  } catch {
+    // pas d'onglet WAX ouvert (ou pas encore rechargé) : solde de la dernière analyse
+  }
 }
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'wax-inspector:wallet') setLiveWallet(msg.wallet);
+});
 
 init();

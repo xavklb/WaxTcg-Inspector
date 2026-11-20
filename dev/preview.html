@@ -35,6 +35,7 @@
           update: async () => ({}),
           sendMessage: async (_id, msg) => {
             await new Promise((r) => setTimeout(r, 30));
+            if (msg.type === 'wax-inspector:wallet?') return { notes: '395', gems: '138', at: Date.now() };
             if (msg.type !== 'wax-inspector:get') return { ok: true };
             const data = respond(msg.path);
             return data ? { ok: true, status: 200, data: structuredClone(data) } : { ok: false, status: 404, error: 'introuvable' };
@@ -44,6 +45,14 @@
           local: {
             get: async (key) => ({ [key]: mem[key] }),
             set: async (obj) => Object.assign(mem, obj),
+          },
+        },
+        // Messages de la page WAX (solde en direct) : window.__waxPush({ notes: '1 250', gems: '95' }).
+        runtime: {
+          onMessage: {
+            addListener: (fn) => {
+              window.__waxPush = (wallet) => fn({ type: 'wax-inspector:wallet', wallet: { ...wallet, at: Date.now() } });
+            },
           },
         },
       };
