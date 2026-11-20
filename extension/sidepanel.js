@@ -1,5 +1,5 @@
 import { WaxApi } from './lib/api.js';
-import { runAuctions, runBuy, runDeck, runSell } from './lib/runs.js';
+import { runAuctions, runBuy, runDeck, runSell, runSnep } from './lib/runs.js';
 import { strengths } from './lib/deck.js';
 import {
   ANNOUNCE_PLACEHOLDERS,
@@ -526,6 +526,88 @@ function renderDeck(res) {
   ];
 }
 
+/** Lecture du site public du SNEP (permission d'hôte snepmusique.com, lecture seule). */
+async function fetchSnepText(url) {
+  if (!String(url).startsWith('https://snepmusique.com/')) throw new Error(`Adresse non autorisée : ${url}`);
+  const res = await fetch(url, { credentials: 'omit' });
+  if (!res.ok) throw new Error(`Site du SNEP : erreur ${res.status}`);
+  return res.text();
+}
+
+const frDay = (iso) => (iso ? iso.split('-').reverse().slice(0, 2).join('/') : '');
+const frDateTime = (ts) =>
+  new Date(ts).toLocaleString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+function upgradeCard(r) {
+  const label = (k) => RARITY[k]?.label ?? k;
+  return card(
+    r.track,
+    [
+      row('Acheter', r.buy != null ? `dès ${notes(r.buy)}` : 'aucune en vente', r.listings ? `${r.listings} en vente` : null),
+      row('Après la montée', r.expected != null ? `≥ ~${notes(r.expected)}` : '—', r.net != null ? `tu touches ${notes(r.net)}` : null),
+      r.profit != null ? profitLine(r.profit, r.buy ? r.profit / r.buy : 0) : null,
+      meta([
+        `certifié ${r.cert.level} (constat du ${frDay(r.cert.certifiedOn)})`,
+        r.quote != null ? `cote actuelle ${fmt(r.quote)}` : null,
+        `${r.sales7d} vente${r.sales7d > 1 ? 's' : ''} / 7 j`,
+      ]),
+      r.buy == null ? h('p', { class: 'reasons' }, 'Personne n’en vend pour l’instant : surveille le Marché, ou garde-la si tu l’as déjà.') : null,
+      r.buy != null && !r.affordable ? h('p', { class: 'reasons' }, `Au-dessus de ton budget (${notes(r.buy)}).`) : null,
+    ],
+    [badge(`${label(r.from)} → ${label(r.to)}`, 'good'), r.multiple ? badge(`×${r.multiple.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}`) : null].filter(Boolean),
+  );
+}
+
+function compactList(items) {
+  return h(
+    'div',
+    { class: 'sheet' },
+    items.map(([k, v]) => h('div', { class: 'row' }, h('span', { class: 'k' }, k), h('span', { class: 'v' }, v))),
+  );
+}
+
+function renderSnep(res) {
+  return [
+    h('p', { class: 'summary num' }, [
+      res.publishedAt ? `SNEP publié ${frDateTime(res.publishedAt)}` : null,
+      res.latestCertifiedOn ? `lot du ${frDay(res.latestCertifiedOn)}` : null,
+      `${res.batchSize} singles certifiés`,
+      `${res.already.length} déjà monté${res.already.length > 1 ? 's' : ''}`,
+    ].filter(Boolean).map((t) => h('span', null, t))),
+    h('h2', { class: 'section' }, `Pas encore montées dans WAX (${res.pending.length})`),
+    res.pending.length
+      ? res.pending.map(upgradeCard)
+      : h(
+          'p',
+          { class: 'empty' },
+          'Toutes les cartes du dernier lot SNEP sont déjà montées dans WAX. Le prochain lot sort en général le lundi après-midi : relance l’analyse à ce moment-là.',
+        ),
+    res.already.length
+      ? h(
+          'details',
+          { class: 'rejected' },
+          h('summary', null, `Déjà montées dans WAX (${res.already.length})`),
+          compactList(res.already.map((a) => [`${a.track.title} – ${a.track.artist}`, RARITY[a.track.rarity]?.label ?? a.track.rarity])),
+        )
+      : null,
+    res.unmatched.length
+      ? h(
+          'details',
+          { class: 'rejected' },
+          h('summary', null, `Introuvables dans WAX (${res.unmatched.length})`),
+          compactList(res.unmatched.map((c) => [`${c.title} – ${c.artist}`, c.level])),
+        )
+      : null,
+    h(
+      'p',
+      { class: 'note' },
+      'Le SNEP publie ses certifications le lundi après-midi ; WAX les a appliquées de 12 h à 3 jours après (novembre 2026). ' +
+        'À la montée, la cote repart du niveau de la nouvelle rareté (×1,6 à ×6 sur les exemples observés). ' +
+        '« Après la montée » est une estimation prudente, d’après la formule de cote de départ du jeu.',
+    ),
+  ];
+}
+
 const VIEWS = {
   buy: {
     label: 'Acheter',
@@ -550,6 +632,12 @@ const VIEWS = {
     intro: 'Face to Face : le deck de 5 cartes qui couvre le mieux les 9 critères (20 points au plus, 2 cartes par artiste), et la carte à poser pour chaque critère.',
     run: runDeck,
     render: renderDeck,
+  },
+  snep: {
+    label: 'SNEP',
+    intro: 'Cartes certifiées par le SNEP mais pas encore montées dans WAX. Achète-les avant la montée : leur cote repart alors du niveau de la nouvelle rareté.',
+    run: runSnep,
+    render: renderSnep,
   },
 };
 
@@ -712,12 +800,14 @@ function header() {
     h(
       'nav',
       { class: 'tabs', role: 'tablist' },
-      [...Object.entries(VIEWS).map(([id, v]) => [id, v.label]), ['settings', 'Réglages']].map(([id, label]) =>
+      [...Object.entries(VIEWS).map(([id, v]) => [id, v.label]), ['settings', '⚙']].map(([id, label]) =>
         h(
           'button',
           {
-            class: 'tab',
+            class: id === 'settings' ? 'tab tab-icon' : 'tab',
             role: 'tab',
+            title: id === 'settings' ? 'Réglages' : null,
+            'aria-label': id === 'settings' ? 'Réglages' : null,
             'aria-selected': String(state.tab === id),
             onclick: () => {
               state.tab = id;
@@ -756,6 +846,7 @@ async function start(tab) {
   try {
     const res = await VIEWS[tab].run(api, state.settings, {
       fansCache: { get: () => store.get('artistFans'), set: (entry) => store.set('artistFans', entry) },
+      fetchText: fetchSnepText,
       progress: (msg) => {
         state.progress = msg;
         const el = document.getElementById('progress');

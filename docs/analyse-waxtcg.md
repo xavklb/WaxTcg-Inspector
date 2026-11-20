@@ -47,6 +47,25 @@ Mécanismes anti-bot observés dans le code :
 - Un exemplaire tiré avant la montée garde un contour de sa rareté d'origine (« carte montée ») et vaut plus.
 - Défi lié : « Avoir 5 cartes qui ont évolué » (80 gemmes + 200 ♫).
 
+### Calendrier des montées SNEP (observé en novembre 2026)
+
+| Lot SNEP (date de constat) | Publié par le SNEP | Appliqué par WAX |
+|---|---|---|
+| 30/10 | lundi 2/11, vers 16 h | jeudi 5/11 23 h et vendredi 6/11 4 h (UTC) |
+| 06/11 | lundi 9/11, vers 15 h | mardi 10/11, 3 h (UTC) |
+| 13/11 | lundi 16/11, 14 h 45 | mardi 17/11, 8 h (UTC) |
+
+- Sources : `https://snepmusique.com/les-certifications/?categorie=Singles` (HTML, les plus récentes d'abord, `/page/N?categorie=Singles`) et `GET https://snepmusique.com/wp-json/wp/v2/certifications_du_sn` (date de publication de chaque fiche). Le CSV « Télécharger » du site s'arrête en 2021.
+- Côté WAX : `history.ups` de `/api/cards/{id}` date chaque montée (`{from, to, at}`) ; `/api/search?q=<titre>` retrouve un son (titre seul, sans accents ni majuscules ; un titre courant peut être noyé, d'où une seconde recherche par l'artiste).
+- **À la montée, la cote repart du niveau de la nouvelle rareté** :
+
+  | Titre | Montée | Prix avant | Prix après |
+  |---|---|---|---|
+  | Cinq heures du matin | Hit → Or | ~209 | cote 1 249 |
+  | Des piges | Populaire → Or | ~550 | 904 minimum |
+  | No Life | Platine → Diamant | ~2 900 | 13 867 |
+  | Mélo Décalé | Platine → Diamant | ~6 000 | ~23 000 |
+
 ### Numéros et éditions limitées
 
 - Chaque exemplaire est numéroté dans l'ordre des tirages ; un petit numéro vaut plus (classement et prix).

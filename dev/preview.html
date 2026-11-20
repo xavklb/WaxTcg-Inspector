@@ -18,7 +18,15 @@
     <div id="app"></div>
     <script type="module">
       // Simule les API Chrome : les requêtes sont servies par les données de démonstration.
-      import { respond } from './fixtures.js';
+      import { respond, snepRespond } from './fixtures.js';
+
+      // Le site du SNEP est servi par les données de démonstration.
+      const realFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = String(input);
+        if (url.startsWith('https://snepmusique.com/')) return new Response(snepRespond(url), { status: 200 });
+        return realFetch(input, init);
+      };
 
       const mem = {};
       window.chrome = {
