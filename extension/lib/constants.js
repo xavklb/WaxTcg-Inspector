@@ -25,6 +25,40 @@ export const MARKET = {
 
 export const MIN_DELAY_MS = 400;
 
+// Face to Face (guide « 06 Face to Face » et code du site, relevés le 20/11/2026).
+export const FACEOFF = {
+  deckSize: 5,
+  rounds: 5,
+  maxPoints: 20,
+  maxPerArtist: 2,
+  themeBonus: 15, // les cartes du thème de la partie prennent +15 sur toutes leurs notes
+  points: { demo: 1, single: 2, hit: 3, or: 4, platine: 6, diamant: 8, worldwide: 10 },
+  criteria: [
+    { key: 'plays', label: 'Écoutes' },
+    { key: 'underground', label: 'Underground' },
+    { key: 'fans', label: 'Fans' },
+    { key: 'quote', label: 'Cote' },
+    { key: 'classic', label: 'Classique' },
+    { key: 'fresh', label: 'Fraîcheur' },
+    { key: 'long', label: 'Le plus long' },
+    { key: 'short', label: 'Le plus court' },
+    { key: 'rare', label: 'La plus rare' },
+  ],
+  themes: {
+    vintage: 'Avant 2000',
+    y2000: 'Années 2000',
+    y2010: 'Années 2010',
+    recent: 'Depuis 2020',
+    fr: 'Made in France',
+    abroad: 'International',
+    rap: 'Rap',
+    pop: 'Pop',
+    rock: 'Rock',
+    electro: 'Électro',
+    feat: 'Featurings',
+  },
+};
+
 export const DEFAULT_SETTINGS = Object.freeze({
   budget: 0, // 0 = toutes mes Mélodies
   minProfit: 20, // gain net minimum, en Mélodies

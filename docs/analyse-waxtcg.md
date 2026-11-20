@@ -108,6 +108,15 @@ Mécanismes anti-bot observés dans le code :
 - Achat immédiat au **double de la cote** : la carte part d'office.
 - 200 enchères ouvertes au moment de l'analyse (107 Platine, 66 Or, 26 Diamant).
 
+### Face to Face (relevé le 20/11/2026)
+
+- Duel en 5 manches. Chaque joueur a un **deck de 5 cartes** de sa collection : 20 points au plus (Découverte 1, Populaire 2, Hit 3, Or 4, Platine 6, Diamant 8, Worldwide 10), 5 cartes différentes, 2 cartes d'un même artiste au plus.
+- À chaque manche, un **critère** est tiré : écoutes (`plays`), underground, fans, cote (`quote`), classique (`classic`), fraîcheur (`fresh`), le plus long, le plus court, la plus rare. On a 15 s pour poser une carte en secret ; la meilleure note gagne. Chaque carte ne sert qu'une fois.
+- Chaque partie tire aussi un **thème** parmi 11 (avant 2000, années 2000, années 2010, depuis 2020, Made in France, International, Rap, Pop, Rock, Électro, Featurings) : ses cartes prennent **+15 sur toutes leurs notes**.
+- Gagner avec une carte moins rare que celle de l'adversaire rapporte 2 points.
+- Gains : 10 gemmes par victoire contre WAX, 20 contre un joueur, +10 en série de 5 victoires, 360 gemmes par jour au plus.
+- `GET /api/faceoff` : `deck` (5 ids), `gemsToday`, `gemsMax`, `board`, `game` (partie en cours : `mine[]` avec les `marks` par critère, `rounds`, `theme`, `criterion`, `score`). Les notes (`marks`) sont calculées par le serveur et ne sont visibles que pendant une partie.
+
 ---
 
 ## 5. API (pour l'outil)

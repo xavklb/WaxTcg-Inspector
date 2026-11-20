@@ -24,10 +24,11 @@ const titleFor = (n) => `${WORDS[n % WORDS.length]}${n >= WORDS.length ? ` ${Mat
 
 const artistIdOf = (artist) => String(100 + Math.max(0, ARTISTS.indexOf(artist)));
 
-function makeTrack(id, rarity, title, artist) {
+function makeTrack(id, rarity, title, artist, extra = {}) {
   return {
     id: String(id), title, artist, artistId: artistIdOf(artist), albumId: '1', album: 'Album démo', cover: '',
     duration: 180, rank: 600000, rarity, region: 'fr', position: 1, albumSize: 12, year: 2025, style: 'rap',
+    ...extra,
   };
 }
 
@@ -42,7 +43,7 @@ function makeHistory(quote, recent, older) {
   return out.sort((a, b) => a.at - b.at);
 }
 
-function addSpec({ id, rarity, title, artist, quote, best, sellers = 3, recent = 5, older = 3, mine = [], history }) {
+function addSpec({ id, rarity, title, artist, quote, best, sellers = 3, recent = 5, older = 3, mine = [], history, extra }) {
   const listings = [];
   if (best != null) {
     for (let i = 0; i < sellers; i++) {
@@ -59,7 +60,7 @@ function addSpec({ id, rarity, title, artist, quote, best, sellers = 3, recent =
   }
   for (const m of mine) listings.push({ id: m.id, price: m.price, mine: true, expiresAt: m.expiresAt, serial: m.serial ?? 999, edition: false, packed: null });
   const spec = {
-    track: makeTrack(id, rarity, title ?? titleFor(id), artist ?? ARTISTS[id % ARTISTS.length]),
+    track: makeTrack(id, rarity, title ?? titleFor(id), artist ?? ARTISTS[id % ARTISTS.length], extra),
     quote,
     listings,
     history: (history ?? makeHistory(quote, recent, older)).sort((a, b) => a.at - b.at),
@@ -121,7 +122,29 @@ const COLLECTION = [
 for (let i = 0; i < 10; i++) {
   COLLECTION.push({ spec: { id: 7010 + i, rarity: 'single', quote: 60, best: 58, recent: 2 }, copies: [[1000 + i * 37, null]], value: 60 });
 }
-for (const c of COLLECTION) addSpec(c.spec);
+// Cartes variées sans annonce, pour le Face to Face.
+const DECK_RARITIES = ['demo', 'single', 'hit', 'demo', 'or', 'single', 'demo', 'platine', 'hit', 'demo', 'diamant', 'single'];
+for (let i = 0; i < 24; i++) {
+  const rarity = DECK_RARITIES[i % DECK_RARITIES.length];
+  const value = Math.round(RARITY[rarity].base * (0.8 + 0.7 * rnd()));
+  COLLECTION.push({ spec: { id: 7020 + i, rarity, quote: value, best: null }, copies: [[3000 + i * 11, null]], value });
+}
+
+// Données utiles au Face to Face : popularité, année, durée, pays, style, featuring.
+const STYLES = ['rap', 'rap', 'pop', 'rock', 'electro'];
+const REGIONS = ['fr', 'fr', 'us', 'world'];
+for (const [i, c] of COLLECTION.entries()) {
+  const feat = i % 7 === 3 ? ` (feat. ${ARTISTS[(i + 3) % ARTISTS.length]})` : '';
+  c.spec.title = `${c.spec.title ?? titleFor(c.spec.id)}${feat}`;
+  c.spec.extra = {
+    rank: 40_000 + Math.floor(rnd() * 960_000),
+    year: 1972 + Math.floor(rnd() * 54),
+    duration: 105 + Math.floor(rnd() * 270),
+    region: REGIONS[i % REGIONS.length],
+    style: STYLES[i % STYLES.length],
+  };
+  addSpec(c.spec);
+}
 
 const collectionTracks = COLLECTION.map((c) => SPECS.get(String(c.spec.id)).track);
 
@@ -146,6 +169,20 @@ const STATS = {
   values: Object.fromEntries(COLLECTION.map((c) => [String(c.spec.id), c.value])),
   locks: Object.fromEntries(COLLECTION.filter((c) => c.locked).map((c) => [String(c.spec.id), c.locked.length])),
   lockedSerials: Object.fromEntries(COLLECTION.filter((c) => c.locked).map((c) => [String(c.spec.id), c.locked])),
+};
+
+// ---------------------------------------------------------------- Face to Face
+
+const FACEOFF_DECK = ['7010', '7011', '7012', '7013', '7014']; // 5 Populaires : deck moyen, 10 points
+const FACEOFF = {
+  deck: FACEOFF_DECK,
+  waitingSince: null,
+  game: null,
+  gemsToday: 10,
+  gemsMax: 360,
+  serverNow: NOW,
+  board: { top: [], me: null, streak: 0 },
+  tracks: FACEOFF_DECK.map((id) => SPECS.get(id).track),
 };
 
 // ---------------------------------------------------------------- Enchères
@@ -231,6 +268,7 @@ export function respond(path) {
   if (p === '/api/game') return GAME;
   if (p === '/api/stats') return STATS;
   if (p === '/api/auctions') return AUCTIONS;
+  if (p === '/api/faceoff') return FACEOFF;
   if (p === '/api/market') return marketList(url.searchParams);
   const m = p.match(/^\/api\/market\/(\d+)$/);
   if (m) return detail(m[1]);

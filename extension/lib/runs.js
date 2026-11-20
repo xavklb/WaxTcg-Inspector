@@ -1,6 +1,7 @@
 // Les trois analyses du panneau. Chacune lit l'API via `api.get(path)` (voir api.js)
 // puis délègue les calculs à analysis.js. Aucune action de jeu n'est jamais envoyée.
 import { MARKET, RARITIES, RARITY } from './constants.js';
+import { buildCards, cheatSheet, deckPoints, deckStrength, findBestDeck, isValidDeck } from './deck.js';
 import {
   collectionCandidates,
   evaluateAuction,
@@ -89,6 +90,44 @@ export async function runAuctions(api, settings, { now = Date.now, progress = ()
   }
   results.sort(okFirst((a, b) => b.profit - a.profit));
   return { at: now(), wallet: w, budget, open: open.length, screened: candidates.length, checked: top.length, results };
+}
+
+function summarizeDeck(cards) {
+  return {
+    cards,
+    points: deckPoints(cards),
+    strength: deckStrength(cards),
+    valid: isValidDeck(cards),
+    sheet: cheatSheet(cards),
+  };
+}
+
+/** Face to Face : le meilleur deck de 5 cartes de ma collection, comparé à mon deck actuel. */
+export async function runDeck(api, settings, { now = Date.now, progress = () => {} } = {}) {
+  progress('Lecture de ta collection…');
+  const game = await api.get('/api/game');
+  const stats = await api.get('/api/stats');
+  progress('Lecture de ton deck Face to Face…');
+  const faceoff = await api.get('/api/faceoff', { ttlMs: 30_000 });
+
+  progress('Recherche du meilleur deck…');
+  await new Promise((resolve) => setTimeout(resolve, 0)); // laisse le message s'afficher
+  const cards = buildCards(game?.tracks ?? [], { values: stats?.values ?? {} });
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const deckIds = (faceoff?.deck ?? []).map(String);
+  const current = deckIds.map((id) => byId.get(id)).filter(Boolean);
+  const best = findBestDeck(cards, { current });
+
+  return {
+    at: now(),
+    wallet: wallet(game),
+    gemsToday: faceoff?.gemsToday ?? null,
+    gemsMax: faceoff?.gemsMax ?? null,
+    collection: cards.length,
+    current: current.length ? summarizeDeck(current) : null,
+    missingFromDeck: deckIds.length - current.length,
+    best: best ? summarizeDeck(best.cards) : null,
+  };
 }
 
 /** Mes annonces à corriger, et les cartes de ma collection à mettre en vente. */
