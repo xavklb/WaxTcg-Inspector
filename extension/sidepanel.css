@@ -420,6 +420,12 @@ details.rejected .card {
   accent-color: var(--accent);
 }
 
+.announce-message + .announce-message {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
 .announce-text {
   display: block;
   width: 100%;

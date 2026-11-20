@@ -5,8 +5,8 @@ import {
   ANNOUNCE_PLACEHOLDERS,
   CHAT_MAX_LENGTH,
   DEFAULT_ANNOUNCE,
-  MAX_ANNOUNCE_COUNT,
-  formatAnnouncement,
+  MAX_PER_MESSAGE,
+  splitAnnouncements,
   normalizeAnnounce,
 } from './lib/announce.js';
 import { DEFAULT_SETTINGS, FACEOFF, MIN_DELAY_MS, RARITY, normalizeSettings } from './lib/constants.js';
@@ -324,18 +324,45 @@ function announcePanel(res) {
     serial: r.serial ?? null,
   }));
   if (!listings.length) return null;
-  const max = Math.min(MAX_ANNOUNCE_COUNT, listings.length);
-  const count = () => Math.min(state.announce.count, max);
+  const max = Math.min(MAX_PER_MESSAGE, listings.length);
+  const perMessage = () => Math.min(state.announce.perMessage, max);
 
-  const output = h('textarea', { class: 'announce-text', readonly: true, rows: 4, 'aria-label': 'Annonce à copier' });
-  const info = h('span', { class: 'progress num' });
-  const copied = h('span', { class: 'progress' });
+  const summary = h('p', { class: 'summary num' });
+  const list = h('div', { class: 'announce-list' });
+
+  const messageView = (m, i, n) => {
+    const output = h('textarea', { class: 'announce-text', readonly: true, rows: 3, 'aria-label': `Message ${i + 1} sur ${n} à copier` });
+    output.value = m.text;
+    const copied = h('span', { class: 'progress' });
+    return h(
+      'div',
+      { class: 'announce-message' },
+      output,
+      h(
+        'div',
+        { class: 'actions' },
+        h(
+          'button',
+          {
+            class: 'btn primary small',
+            type: 'button',
+            onclick: async () => {
+              copied.textContent = (await copyText(output.value, output)) ? 'Copié !' : 'Copie impossible : sélectionne le texte.';
+            },
+          },
+          n > 1 ? `Copier ${i + 1}/${n}` : 'Copier',
+        ),
+        h('span', { class: 'progress num' }, `${m.titles} titre${m.titles > 1 ? 's' : ''} · ${m.length}/${CHAT_MAX_LENGTH} signes`),
+        copied,
+      ),
+      m.tooLong ? h('p', { class: 'reasons' }, 'Un seul titre dépasse déjà 240 signes : raccourcis le format dans Réglages.') : null,
+    );
+  };
+
   const update = () => {
-    const a = formatAnnouncement(listings, { ...state.announce, count: count() });
-    output.value = a.text;
-    const dropped = a.requested - a.included;
-    info.textContent = `${a.length}/${CHAT_MAX_LENGTH} signes${dropped > 0 ? ` · ${dropped} titre${dropped > 1 ? 's' : ''} retiré${dropped > 1 ? 's' : ''} pour tenir` : ''}`;
-    copied.textContent = '';
+    const { messages, total } = splitAnnouncements(listings, { ...state.announce, perMessage: perMessage() });
+    summary.textContent = `${total} titre${total > 1 ? 's' : ''} en vente → ${messages.length} message${messages.length > 1 ? 's' : ''} à envoyer l’un après l’autre`;
+    list.replaceChildren(...messages.map((m, i) => messageView(m, i, messages.length)));
   };
   const save = () => {
     store.set('announce', state.announce);
@@ -345,13 +372,15 @@ function announcePanel(res) {
   const select = h(
     'select',
     {
-      'aria-label': 'Nombre de titres dans l’annonce',
+      'aria-label': 'Nombre de titres par message',
       onchange: (e) => {
-        state.announce.count = Number(e.target.value);
+        state.announce.perMessage = Number(e.target.value);
         save();
       },
     },
-    Array.from({ length: max }, (_, i) => i + 1).map((n) => h('option', { value: n, selected: n === count() }, `${n} titre${n > 1 ? 's' : ''}`)),
+    Array.from({ length: max }, (_, i) => i + 1).map((n) =>
+      h('option', { value: n, selected: n === perMessage() }, `${n} titre${n > 1 ? 's' : ''} par message`),
+    ),
   );
   const upper = h('input', {
     type: 'checkbox',
@@ -362,17 +391,6 @@ function announcePanel(res) {
       save();
     },
   });
-  const copyBtn = h(
-    'button',
-    {
-      class: 'btn primary small',
-      type: 'button',
-      onclick: async () => {
-        copied.textContent = (await copyText(output.value, output)) ? 'Copié !' : 'Copie impossible : sélectionne le texte.';
-      },
-    },
-    'Copier',
-  );
   update();
 
   return h(
@@ -380,12 +398,12 @@ function announcePanel(res) {
     { class: 'announce' },
     h('h2', { class: 'section' }, 'Annonce pour le chat du label'),
     h('div', { class: 'announce-controls' }, select, h('label', { class: 'check', for: 'announce-upper' }, upper, 'Titre et artiste en majuscules')),
-    output,
-    h('div', { class: 'actions' }, copyBtn, info, copied),
+    summary,
+    list,
     h(
       'p',
       { class: 'note' },
-      'L’extension n’envoie rien : colle l’annonce dans Social → Discussion du label et envoie-la toi-même. Le format se règle dans Réglages.',
+      'L’extension n’envoie rien : colle chaque message dans Social → Discussion du label et envoie-le toi-même (le chat accepte un message toutes les 4 secondes). Le format se règle dans Réglages.',
     ),
   );
 }
@@ -701,7 +719,7 @@ function settingsView() {
 }
 
 const ANNOUNCE_FIELDS = [
-  { key: 'header', label: 'Format du message', hint: `Champs : ${ANNOUNCE_PLACEHOLDERS.header.join(' ')}` },
+  { key: 'header', label: 'Format du message', hint: `Champs : ${ANNOUNCE_PLACEHOLDERS.header.join(' ')} ({page}/{pages} = numéro du message)` },
   { key: 'item', label: 'Format d’un titre', hint: `Champs : ${ANNOUNCE_PLACEHOLDERS.item.join(' ')}` },
   { key: 'separator', label: 'Séparateur entre les titres' },
 ];
@@ -709,6 +727,7 @@ const ANNOUNCE_FIELDS = [
 const ANNOUNCE_SAMPLE = [
   { title: 'Dernier métro', artist: 'Kalia', price: 980, rarity: 'or', serial: 412 },
   { title: 'Sans filtre', artist: 'Vega', price: 305, rarity: 'hit', serial: 1288 },
+  { title: 'Néon', artist: 'Nova', price: 120, rarity: 'single', serial: 77 },
 ];
 
 function announceSettingsView() {
@@ -716,8 +735,8 @@ function announceSettingsView() {
   const preview = h('p', { class: 'note' });
   const draft = () => normalizeAnnounce({ ...state.announce, ...Object.fromEntries(ANNOUNCE_FIELDS.map((f) => [f.key, inputs[f.key].value])) });
   const refresh = () => {
-    const a = formatAnnouncement(ANNOUNCE_SAMPLE, { ...draft(), count: 2 });
-    preview.textContent = `Exemple (${a.length}/${CHAT_MAX_LENGTH}) : ${a.text}`;
+    const [first] = splitAnnouncements(ANNOUNCE_SAMPLE, { ...draft(), perMessage: 2 }).messages;
+    preview.textContent = first ? `Exemple (${first.length}/${CHAT_MAX_LENGTH}) : ${first.text}` : '';
   };
   const form = h(
     'form',
@@ -747,7 +766,7 @@ function announceSettingsView() {
           class: 'btn',
           type: 'button',
           onclick: async () => {
-            state.announce = { ...DEFAULT_ANNOUNCE, count: state.announce.count, uppercase: state.announce.uppercase };
+            state.announce = { ...DEFAULT_ANNOUNCE, perMessage: state.announce.perMessage, uppercase: state.announce.uppercase };
             await store.set('announce', state.announce);
             render();
           },

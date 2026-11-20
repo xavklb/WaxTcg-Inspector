@@ -4,8 +4,8 @@ import {
   CHAT_MAX_LENGTH,
   DEFAULT_ANNOUNCE,
   fillTemplate,
-  formatAnnouncement,
   normalizeAnnounce,
+  splitAnnouncements,
 } from '../extension/lib/announce.js';
 import { reviewListing } from '../extension/lib/analysis.js';
 import { fmt } from '../extension/lib/format.js';
@@ -16,32 +16,43 @@ const LISTINGS = [
   { title: 'Dernier métro', artist: 'Kalia', price: 980, rarity: 'or', serial: 412 },
 ];
 
-test('format par défaut : les plus chères d’abord, nombre de titres choisi', () => {
-  const a = formatAnnouncement(LISTINGS, { count: 2 });
-  assert.equal(
-    a.text,
-    `🛒 En vente au Marché : Téléphone rouge – Mistral (Platine) ${fmt(3400)} ♫ | Dernier métro – Kalia (Or) 980 ♫`,
+test('titres par message : toutes les ventes, les plus chères d’abord', () => {
+  const { messages, total } = splitAnnouncements(LISTINGS, { perMessage: 2 });
+  assert.equal(total, 3);
+  assert.deepEqual(
+    messages.map((m) => m.text),
+    [
+      `🛒 En vente au Marché : Téléphone rouge – Mistral (Platine) ${fmt(3400)} ♫ | Dernier métro – Kalia (Or) 980 ♫`,
+      '🛒 En vente au Marché : Sans filtre – Vega (Hit) 230 ♫',
+    ],
   );
-  assert.equal(a.included, 2);
-  assert.equal(a.requested, 2);
-  assert.equal(a.available, 3);
-  assert.equal(a.length, a.text.length);
-  assert.equal(a.tooLong, false);
+  assert.deepEqual(messages.map((m) => m.titles), [2, 1]);
+  assert.ok(messages.every((m) => m.length === m.text.length && !m.tooLong));
+});
+
+test('un titre par message, ou tout dans un seul', () => {
+  assert.equal(splitAnnouncements(LISTINGS, { perMessage: 1 }).messages.length, 3);
+  const one = splitAnnouncements(LISTINGS, { perMessage: 10 }).messages;
+  assert.equal(one.length, 1);
+  assert.equal(one[0].titles, 3);
 });
 
 test('majuscules sur le titre et l’artiste seulement', () => {
-  const a = formatAnnouncement(LISTINGS, { count: 1, uppercase: true });
-  assert.equal(a.text, `🛒 En vente au Marché : TÉLÉPHONE ROUGE – MISTRAL (Platine) ${fmt(3400)} ♫`);
+  const [m] = splitAnnouncements(LISTINGS, { perMessage: 1, uppercase: true }).messages;
+  assert.equal(m.text, `🛒 En vente au Marché : TÉLÉPHONE ROUGE – MISTRAL (Platine) ${fmt(3400)} ♫`);
 });
 
-test('format personnalisé : champs, numéro, nombre, séparateur', () => {
-  const a = formatAnnouncement(LISTINGS, {
-    header: '{nombre} cartes dispo → {liste}',
+test('format personnalisé : champs, numéro, nombre, page, séparateur', () => {
+  const { messages } = splitAnnouncements(LISTINGS, {
+    header: '[{page}/{pages}] {nombre} cartes dispo → {liste}',
     item: '{titre} {numero} à {prix}',
     separator: ' / ',
-    count: 3,
+    perMessage: 2,
   });
-  assert.equal(a.text, `3 cartes dispo → Téléphone rouge à ${fmt(3400)} / Dernier métro n°412 à 980 / Sans filtre n°999 à 230`);
+  assert.deepEqual(
+    messages.map((m) => m.text),
+    [`[1/2] 2 cartes dispo → Téléphone rouge à ${fmt(3400)} / Dernier métro n°412 à 980`, '[2/2] 1 cartes dispo → Sans filtre n°999 à 230'],
+  );
 });
 
 test('champs : {rareté} accepté, champ inconnu laissé tel quel, parenthèses vides retirées', () => {
@@ -49,31 +60,37 @@ test('champs : {rareté} accepté, champ inconnu laissé tel quel, parenthèses 
   assert.equal(fillTemplate('{titre} ({rarete}) {foo}', { titre: 'A', rarete: '' }), 'A {foo}');
 });
 
-test('annonce trop longue : on retire des titres pour tenir dans 240 signes', () => {
+test('trop long pour 240 signes : le titre passe au message suivant, aucun n’est perdu', () => {
   const many = Array.from({ length: 10 }, (_, i) => ({
     title: `Un titre vraiment très long pour remplir le chat ${i}`,
     artist: 'Artiste au nom interminable',
     price: 1000 - i,
     rarity: 'or',
   }));
-  const a = formatAnnouncement(many, { count: 10 });
-  assert.equal(a.requested, 10);
-  assert.ok(a.included < 10 && a.included > 0);
-  assert.ok(a.length <= CHAT_MAX_LENGTH);
-  assert.equal(a.tooLong, false);
+  const { messages, total } = splitAnnouncements(many, { perMessage: 10, header: '({page}/{pages}) {liste}' });
+  assert.equal(total, 10);
+  assert.ok(messages.length > 1);
+  assert.equal(messages.reduce((sum, m) => sum + m.titles, 0), 10);
+  assert.ok(messages.every((m) => m.length <= CHAT_MAX_LENGTH && !m.tooLong));
+  assert.ok(messages.at(-1).text.startsWith(`(${messages.length}/${messages.length})`));
+});
+
+test('un seul titre plus long que 240 signes est signalé', () => {
+  const [m] = splitAnnouncements([{ title: 'x'.repeat(300), artist: 'A', price: 10, rarity: 'demo' }], {}).messages;
+  assert.equal(m.titles, 1);
+  assert.equal(m.tooLong, true);
 });
 
 test('rien à annoncer', () => {
-  const a = formatAnnouncement([], {});
-  assert.equal(a.included, 0);
-  assert.equal(a.text, '🛒 En vente au Marché :');
+  assert.deepEqual(splitAnnouncements([], {}), { messages: [], total: 0 });
 });
 
-test('réglages de l’annonce : bornes et valeurs par défaut', () => {
+test('réglages de l’annonce : bornes, valeurs par défaut, ancien réglage repris', () => {
   assert.deepEqual(normalizeAnnounce(undefined), { ...DEFAULT_ANNOUNCE });
-  assert.equal(normalizeAnnounce({ count: 0 }).count, 1);
-  assert.equal(normalizeAnnounce({ count: 99 }).count, 10);
-  assert.equal(normalizeAnnounce({ count: 'abc' }).count, DEFAULT_ANNOUNCE.count);
+  assert.equal(normalizeAnnounce({ perMessage: 0 }).perMessage, 1);
+  assert.equal(normalizeAnnounce({ perMessage: 99 }).perMessage, 10);
+  assert.equal(normalizeAnnounce({ perMessage: 'abc' }).perMessage, DEFAULT_ANNOUNCE.perMessage);
+  assert.equal(normalizeAnnounce({ count: 5 }).perMessage, 5); // réglage de la version précédente
   assert.equal(normalizeAnnounce({ uppercase: 'oui' }).uppercase, false);
   assert.equal(normalizeAnnounce({ header: '' }).header, DEFAULT_ANNOUNCE.header);
   assert.equal(normalizeAnnounce({ separator: '' }).separator, '');
