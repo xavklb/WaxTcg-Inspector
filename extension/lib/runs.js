@@ -1,6 +1,6 @@
 // Les trois analyses du panneau. Chacune lit l'API via `api.get(path)` (voir api.js)
 // puis délègue les calculs à analysis.js. Aucune action de jeu n'est jamais envoyée.
-import { MARKET, RARITIES, RARITY } from './constants.js';
+import { FACEOFF, MARKET, RARITIES, RARITY } from './constants.js';
 import { buildCards, cheatSheet, deckPoints, deckStrength, findBestDeck, isValidDeck } from './deck.js';
 import {
   collectionCandidates,
@@ -102,17 +102,60 @@ function summarizeDeck(cards) {
   };
 }
 
-/** Face to Face : le meilleur deck de 5 cartes de ma collection, comparé à mon deck actuel. */
-export async function runDeck(api, settings, { now = Date.now, progress = () => {} } = {}) {
+/** Fans de tous les artistes de ma collection (/api/artists?started=1, 60 par page comme le site). */
+export async function fetchArtistFans(api, { progress = () => {}, maxPages = 40 } = {}) {
+  const size = FACEOFF.artistsPageSize;
+  const fans = {};
+  let pages = null;
+  for (let page = 0; page < maxPages && (pages == null || page < pages); page += 1) {
+    progress(`Fans des artistes (${page + 1}/${pages ?? '…'})…`);
+    const qs = new URLSearchParams({ started: '1', offset: String(page * size), limit: String(size) });
+    const data = await api.get(`/api/artists?${qs}`, { ttlMs: FACEOFF.fansCacheMs });
+    pages = Math.ceil((Number(data?.total) || 0) / size);
+    const items = data?.items ?? [];
+    for (const it of items) {
+      if (it?.artist?.id != null && Number.isFinite(it.artist.fans)) fans[String(it.artist.id)] = it.artist.fans;
+    }
+    if (items.length < size) break;
+  }
+  return fans;
+}
+
+/**
+ * Face to Face : le meilleur deck de 5 cartes de ma collection, comparé à mon deck actuel.
+ * `fansCache` ({get, set}, optionnel) garde les fans des artistes 24 h entre deux analyses.
+ */
+export async function runDeck(api, settings, { now = Date.now, progress = () => {}, fansCache = null } = {}) {
   progress('Lecture de ta collection…');
   const game = await api.get('/api/game');
   const stats = await api.get('/api/stats');
   progress('Lecture de ton deck Face to Face…');
   const faceoff = await api.get('/api/faceoff', { ttlMs: 30_000 });
 
+  // « L'artiste le plus suivi gagne » : il faut le vrai nombre de fans de chaque artiste.
+  let fans = {};
+  let fansSource = 'approx';
+  let fansAt = null;
+  const cached = await fansCache?.get?.();
+  if (cached?.fans && Object.keys(cached.fans).length && now() - cached.at < FACEOFF.fansCacheMs) {
+    fans = cached.fans;
+    fansSource = 'cache';
+    fansAt = cached.at;
+  } else {
+    try {
+      fans = await fetchArtistFans(api, { progress });
+      fansSource = Object.keys(fans).length ? 'api' : 'approx';
+      fansAt = now();
+      if (fansSource === 'api') await fansCache?.set?.({ at: fansAt, fans });
+    } catch (e) {
+      if (e?.code === 'ABORTED') throw e;
+      fans = {};
+    }
+  }
+
   progress('Recherche du meilleur deck…');
   await new Promise((resolve) => setTimeout(resolve, 0)); // laisse le message s'afficher
-  const cards = buildCards(game?.tracks ?? [], { values: stats?.values ?? {} });
+  const cards = buildCards(game?.tracks ?? [], { values: stats?.values ?? {}, fans });
   const byId = new Map(cards.map((c) => [c.id, c]));
   const deckIds = (faceoff?.deck ?? []).map(String);
   const current = deckIds.map((id) => byId.get(id)).filter(Boolean);
@@ -124,6 +167,8 @@ export async function runDeck(api, settings, { now = Date.now, progress = () => 
     gemsToday: faceoff?.gemsToday ?? null,
     gemsMax: faceoff?.gemsMax ?? null,
     collection: cards.length,
+    fansSource,
+    fansAt,
     current: current.length ? summarizeDeck(current) : null,
     missingFromDeck: deckIds.length - current.length,
     best: best ? summarizeDeck(best.cards) : null,

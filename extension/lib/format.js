@@ -22,6 +22,21 @@ export function duration(ms) {
   return `${Math.round(hours / 24)} j`;
 }
 
+/** 8 150 000 → « 8,2 M » ; 35 000 → « 35 k ». */
+export function compact(n) {
+  if (n == null || !Number.isFinite(n)) return '—';
+  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} M`;
+  if (Math.abs(n) >= 1e4) return `${Math.round(n / 1e3)} k`;
+  return fmt(n);
+}
+
+/** 205 → « 3:25 ». */
+export function mmss(seconds) {
+  if (seconds == null || !Number.isFinite(seconds)) return '—';
+  const s = Math.round(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 export function ago(ts, now = Date.now()) {
   if (!Number.isFinite(ts)) return '';
   return now - ts < 60_000 ? 'à l’instant' : `il y a ${duration(now - ts)}`;

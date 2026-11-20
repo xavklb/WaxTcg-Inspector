@@ -8,6 +8,7 @@
     /^\/api\/stats$/,
     /^\/api\/auctions$/,
     /^\/api\/faceoff$/,
+    /^\/api\/artists\?[A-Za-z0-9=&%._,-]*$/,
     /^\/api\/market\?[A-Za-z0-9=&%._-]*$/,
     /^\/api\/market\/\d+$/,
     /^\/api\/cards\/\d+$/,

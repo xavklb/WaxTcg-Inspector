@@ -112,6 +112,20 @@ Mécanismes anti-bot observés dans le code :
 
 - Duel en 5 manches. Chaque joueur a un **deck de 5 cartes** de sa collection : 20 points au plus (Découverte 1, Populaire 2, Hit 3, Or 4, Platine 6, Diamant 8, Worldwide 10), 5 cartes différentes, 2 cartes d'un même artiste au plus.
 - À chaque manche, un **critère** est tiré : écoutes (`plays`), underground, fans, cote (`quote`), classique (`classic`), fraîcheur (`fresh`), le plus long, le plus court, la plus rare. On a 15 s pour poser une carte en secret ; la meilleure note gagne. Chaque carte ne sert qu'une fois.
+- Les 9 questions, telles qu'écrites dans le code du jeu, et la donnée utilisée par l'extension pour les estimer :
+
+  | Clé | Question | Donnée utilisée |
+  |---|---|---|
+  | `plays` | Le son le plus écouté gagne | popularité Deezer du son (`rank`) |
+  | `underground` | Le son le moins écouté gagne | idem, inversé |
+  | `fans` | L'artiste le plus suivi gagne | `artist.fans` via `GET /api/artists?started=1&offset=…&limit=60` (840 artistes = 14 pages) |
+  | `quote` | La carte qui vaut le plus au Marché gagne | `stats.values` (= cote du Marché, un peu plus pour un petit numéro) |
+  | `classic` | Le son le plus ancien gagne | `year` |
+  | `fresh` | Le son le plus récent gagne | `year` |
+  | `long` | Le son le plus long gagne | `duration` |
+  | `short` | Le son le plus court gagne | `duration` |
+  | `rare` | La carte la plus rare gagne | rareté, puis valeur |
+
 - Chaque partie tire aussi un **thème** parmi 11 (avant 2000, années 2000, années 2010, depuis 2020, Made in France, International, Rap, Pop, Rock, Électro, Featurings) : ses cartes prennent **+15 sur toutes leurs notes**.
 - Gagner avec une carte moins rare que celle de l'adversaire rapporte 2 points.
 - Gains : 10 gemmes par victoire contre WAX, 20 contre un joueur, +10 en série de 5 victoires, 360 gemmes par jour au plus.

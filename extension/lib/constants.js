@@ -33,17 +33,20 @@ export const FACEOFF = {
   maxPerArtist: 2,
   themeBonus: 15, // les cartes du thème de la partie prennent +15 sur toutes leurs notes
   points: { demo: 1, single: 2, hit: 3, or: 4, platine: 6, diamant: 8, worldwide: 10 },
+  // Les 9 questions, telles que le jeu les pose.
   criteria: [
-    { key: 'plays', label: 'Écoutes' },
-    { key: 'underground', label: 'Underground' },
-    { key: 'fans', label: 'Fans' },
-    { key: 'quote', label: 'Cote' },
-    { key: 'classic', label: 'Classique' },
-    { key: 'fresh', label: 'Fraîcheur' },
-    { key: 'long', label: 'Le plus long' },
-    { key: 'short', label: 'Le plus court' },
-    { key: 'rare', label: 'La plus rare' },
+    { key: 'plays', label: 'Écoutes', question: 'Le son le plus écouté gagne' },
+    { key: 'underground', label: 'Underground', question: 'Le son le moins écouté gagne' },
+    { key: 'fans', label: 'Fans', question: 'L’artiste le plus suivi gagne' },
+    { key: 'quote', label: 'Cote', question: 'La carte qui vaut le plus au Marché gagne' },
+    { key: 'classic', label: 'Classique', question: 'Le son le plus ancien gagne' },
+    { key: 'fresh', label: 'Fraîcheur', question: 'Le son le plus récent gagne' },
+    { key: 'long', label: 'Le plus long', question: 'Le son le plus long gagne' },
+    { key: 'short', label: 'Le plus court', question: 'Le son le plus court gagne' },
+    { key: 'rare', label: 'La plus rare', question: 'La carte la plus rare gagne' },
   ],
+  artistsPageSize: 60, // pagination de /api/artists, comme le site
+  fansCacheMs: 24 * 3_600_000, // le nombre de fans bouge peu : relu une fois par jour
   themes: {
     vintage: 'Avant 2000',
     y2000: 'Années 2000',
