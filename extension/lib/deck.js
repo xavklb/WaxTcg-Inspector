@@ -1,12 +1,15 @@
 // Face to Face : estimation des notes de chaque carte et recherche du meilleur deck.
 //
 // Le serveur ne donne les vraies notes que pendant une partie. On les estime ici à partir
-// des données des cartes, en percentile (0–100) dans ta collection :
-//   Écoutes = popularité Deezer (rank)          Underground = l'inverse
-//   Fans    = titre le plus populaire de l'artiste dans ta collection (approximation)
-//   Cote    = valeur de la carte (/api/stats)    La plus rare = rareté, puis valeur
-//   Classique / Fraîcheur = année (ancienne / récente)
-//   Le plus long / Le plus court = durée
+// des données des cartes, en percentile (0–100) dans ta collection, d'après les 9 questions
+// du jeu (constants.js) :
+//   « Le son le plus / le moins écouté »  → popularité Deezer du son (rank)
+//   « L'artiste le plus suivi »           → fans de l'artiste (/api/artists) ; à défaut,
+//                                           titre le plus populaire de l'artiste (approximation)
+//   « La carte qui vaut le plus au Marché » → valeur de la carte (/api/stats, = cote du Marché)
+//   « Le son le plus ancien / récent »    → année
+//   « Le son le plus long / court »       → durée
+//   « La carte la plus rare »             → rareté, puis valeur
 // Chaque partie tire un thème parmi 11 : une carte du thème prend +15. On ajoute donc
 // à toutes ses notes le bonus moyen attendu : 15 × (nombre de thèmes de la carte) / 11.
 import { FACEOFF, RARITIES } from './constants.js';
@@ -65,17 +68,20 @@ export function percentiles(values) {
 /**
  * Cartes jouables avec leurs notes estimées.
  * `values` : valeur de chaque carte (stats.values de /api/stats).
+ * `fans`   : fans de chaque artiste {artistId: nombre} (/api/artists) ; vide → approximation.
  */
-export function buildCards(tracks, { values = {} } = {}) {
+export function buildCards(tracks, { values = {}, fans = {} } = {}) {
   const list = (tracks ?? []).filter((t) => t?.id && FACEOFF.points[t.rarity] != null);
-  const artistPower = new Map();
-  for (const t of list) artistPower.set(t.artistId, Math.max(artistPower.get(t.artistId) ?? 0, Number(t.rank) || 0));
   const num = (x) => (x == null || x === '' ? NaN : Number(x));
   const value = (t) => num(values[t.id]);
+  const realFans = Object.keys(fans ?? {}).length > 0;
+  const artistPower = new Map();
+  for (const t of list) artistPower.set(t.artistId, Math.max(artistPower.get(t.artistId) ?? 0, Number(t.rank) || 0));
+  const fansOf = (t) => (realFans ? num(fans[t.artistId]) : artistPower.get(t.artistId));
   const raw = {
     plays: list.map((t) => num(t.rank)),
     underground: list.map((t) => -num(t.rank)),
-    fans: list.map((t) => artistPower.get(t.artistId)),
+    fans: list.map(fansOf),
     quote: list.map(value),
     classic: list.map((t) => -num(t.year)),
     fresh: list.map((t) => num(t.year)),
@@ -88,6 +94,13 @@ export function buildCards(tracks, { values = {} } = {}) {
     const themes = themesOf(track);
     const bonus = (FACEOFF.themeBonus * themes.length) / N_THEMES;
     const notes = Object.fromEntries(CRITERIA.map((c) => [c, Math.round(pct[c][i])]));
+    // Donnée qui décide de chaque question (pour l'affichage).
+    const facts = {
+      fans: realFans ? num(fans[track.artistId]) : null,
+      quote: value(track),
+      year: num(track.year),
+      duration: num(track.duration),
+    };
     return {
       id: String(track.id),
       track,
@@ -95,9 +108,31 @@ export function buildCards(tracks, { values = {} } = {}) {
       themes,
       bonus,
       notes,
+      facts,
       adj: CRITERIA.map((c) => pct[c][i] + bonus),
     };
   });
+}
+
+/** Donnée brute qui décide d'une question, pour une carte ({kind, value}) ou null. */
+export function factFor(card, criterion) {
+  const f = card.facts ?? {};
+  switch (criterion) {
+    case 'fans':
+      return Number.isFinite(f.fans) ? { kind: 'fans', value: f.fans } : null;
+    case 'quote':
+      return Number.isFinite(f.quote) ? { kind: 'notes', value: f.quote } : null;
+    case 'classic':
+    case 'fresh':
+      return Number.isFinite(f.year) && f.year > 0 ? { kind: 'year', value: f.year } : null;
+    case 'long':
+    case 'short':
+      return Number.isFinite(f.duration) ? { kind: 'duration', value: f.duration } : null;
+    case 'rare':
+      return { kind: 'rarity', value: card.track.rarity };
+    default:
+      return null;
+  }
 }
 
 function bestMatchPartial(rows, crit) {
@@ -272,8 +307,15 @@ export function cheatSheet(deck) {
   return FACEOFF.criteria.map((crit) => ({
     criterion: crit.key,
     label: crit.label,
+    question: crit.question,
     picks: deck
-      .map((card) => ({ id: card.id, title: card.track.title, note: card.notes[crit.key], themes: card.themes }))
+      .map((card) => ({
+        id: card.id,
+        title: card.track.title,
+        note: card.notes[crit.key],
+        themes: card.themes,
+        fact: factFor(card, crit.key),
+      }))
       .sort((a, b) => b.note - a.note),
   }));
 }

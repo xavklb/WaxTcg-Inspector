@@ -185,6 +185,27 @@ const FACEOFF = {
   tracks: FACEOFF_DECK.map((id) => SPECS.get(id).track),
 };
 
+// Fans des artistes (/api/artists?started=1).
+const ARTIST_FANS = [8_150, 2_400_000, 120_000, 9_048_978, 35_000, 640_000, 1_200_000, 15_000, 4_300_000, 72_000];
+
+function artistsPage(params) {
+  const offset = Number(params.get('offset')) || 0;
+  const limit = Number(params.get('limit')) || 60;
+  const owned = new Map();
+  for (const t of collectionTracks) owned.set(t.artistId, (owned.get(t.artistId) ?? 0) + 1);
+  const all = [...owned.entries()].map(([id, n]) => {
+    const i = Number(id) - 100;
+    return {
+      artist: { id, name: ARTISTS[i], picture: '', fans: ARTIST_FANS[i], region: 'fr', genreId: 116 },
+      albums: {},
+      owned: n,
+      total: n + 3,
+      albumsDone: 0,
+    };
+  });
+  return { items: all.slice(offset, offset + limit), total: all.length, summary: { cards: collectionTracks.length, albumsDone: 0, artistsDone: 0 } };
+}
+
 // ---------------------------------------------------------------- Enchères
 
 const auctionable = [...SPECS.values()].filter((s) => ['or', 'platine', 'diamant'].includes(s.track.rarity) && Number(s.track.id) < 7000);
@@ -269,6 +290,7 @@ export function respond(path) {
   if (p === '/api/stats') return STATS;
   if (p === '/api/auctions') return AUCTIONS;
   if (p === '/api/faceoff') return FACEOFF;
+  if (p === '/api/artists') return artistsPage(url.searchParams);
   if (p === '/api/market') return marketList(url.searchParams);
   const m = p.match(/^\/api\/market\/(\d+)$/);
   if (m) return detail(m[1]);

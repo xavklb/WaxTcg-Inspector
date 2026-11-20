@@ -2,7 +2,7 @@ import { WaxApi } from './lib/api.js';
 import { runAuctions, runBuy, runDeck, runSell } from './lib/runs.js';
 import { strengths } from './lib/deck.js';
 import { DEFAULT_SETTINGS, FACEOFF, MIN_DELAY_MS, RARITY, normalizeSettings } from './lib/constants.js';
-import { ago, duration, fmt, pct } from './lib/format.js';
+import { ago, compact, duration, fmt, mmss, pct } from './lib/format.js';
 
 const DAY = 86_400_000;
 const app = document.getElementById('app');
@@ -241,11 +241,37 @@ function renderSell(res) {
   ];
 }
 
+/** Donnée qui décide d'une question : « 8,2 M fans », « 1994 », « 3:25 », « 861 ♫ », « Diamant ». */
+function factText(fact) {
+  if (!fact) return null;
+  switch (fact.kind) {
+    case 'fans':
+      return `${compact(fact.value)} fans`;
+    case 'notes':
+      return notes(fact.value);
+    case 'year':
+      return String(fact.value);
+    case 'duration':
+      return mmss(fact.value);
+    case 'rarity':
+      return RARITY[fact.value]?.label ?? fact.value;
+    default:
+      return null;
+  }
+}
+
 function deckCard(c) {
+  const f = c.facts ?? {};
   return card(
     c.track,
     [
       meta(strengths(c).map((s) => `${s.label} ${s.note}`)),
+      meta([
+        Number.isFinite(f.fans) ? `${compact(f.fans)} fans` : null,
+        Number.isFinite(f.year) && f.year > 0 ? String(f.year) : null,
+        Number.isFinite(f.duration) ? mmss(f.duration) : null,
+        Number.isFinite(f.quote) ? notes(f.quote) : null,
+      ]),
       c.themes.length ? meta([`Thèmes : ${c.themes.map((t) => FACEOFF.themes[t] ?? t).join(', ')}`]) : null,
     ],
     [badge(`${c.points} pt${c.points > 1 ? 's' : ''}`)],
@@ -256,20 +282,24 @@ function sheetView(sheet) {
   return h(
     'div',
     { class: 'sheet' },
-    sheet.map((s) =>
-      h(
+    sheet.map((s) => {
+      const [first, second] = s.picks;
+      const fact = factText(first.fact);
+      return h(
         'div',
-        { class: 'row' },
-        h('span', { class: 'k' }, s.label),
+        { class: 'sheet-item' },
+        h('div', { class: 'sheet-q' }, h('b', null, s.label), s.question ? h('span', { class: 'muted' }, ` · ${s.question}`) : null),
         h(
-          'span',
-          { class: 'v' },
-          h('strong', null, s.picks[0].title),
-          h('span', { class: 'num' }, ` ${s.picks[0].note}`),
-          s.picks[1] ? h('span', { class: 'muted' }, ` · puis ${s.picks[1].title}`) : null,
+          'div',
+          { class: 'sheet-a' },
+          '▸ ',
+          h('strong', null, first.title),
+          h('span', { class: 'num' }, ` ${first.note}`),
+          fact ? h('span', { class: 'muted num' }, ` · ${fact}`) : null,
+          second ? h('span', { class: 'muted' }, ` · puis ${second.title}`) : null,
         ),
-      ),
-    ),
+      );
+    }),
   );
 }
 
@@ -319,9 +349,12 @@ function renderDeck(res) {
     h(
       'p',
       { class: 'note' },
-      'Force = note moyenne attendue par manche. Notes estimées de 0 à 100, en comparant tes cartes entre elles : popularité Deezer, année, durée, cote et rareté. ' +
-        'Les fans sont approchés par le titre le plus populaire de l’artiste, et le bonus de thème moyen est inclus. ' +
-        'Le jeu calcule les vraies notes de son côté : sers-t’en comme d’un guide.',
+      'Force = note moyenne attendue par manche, bonus de thème moyen compris. Chaque note (0 à 100) compare tes cartes entre elles sur la donnée de la question : ' +
+        'popularité Deezer du son, fans de l’artiste, cote, année, durée, rareté. ',
+      res.fansSource === 'approx'
+        ? 'Fans approchés par le titre le plus populaire de l’artiste (les vrais chiffres n’ont pas pu être lus). '
+        : `Fans réels des artistes, lus ${ago(res.fansAt)} (relus une fois par jour). `,
+      'Le jeu calcule les vraies notes de son côté : sers-t’en comme d’un guide.',
     ),
   ];
 }
@@ -493,6 +526,7 @@ async function start(tab) {
   render();
   try {
     const res = await VIEWS[tab].run(api, state.settings, {
+      fansCache: { get: () => store.get('artistFans'), set: (entry) => store.set('artistFans', entry) },
       progress: (msg) => {
         state.progress = msg;
         const el = document.getElementById('progress');

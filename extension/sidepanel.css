@@ -335,17 +335,20 @@ details.rejected .card {
   background: var(--surface);
 }
 
-.sheet .row {
-  align-items: baseline;
+.sheet-item {
   min-width: 0;
+  padding: 4px 0;
 }
 
-.sheet .k {
-  flex: none;
+.sheet-item + .sheet-item {
+  border-top: 1px solid var(--border);
 }
 
-.sheet .v {
-  min-width: 0;
+.sheet-q {
+  font-size: 12px;
+}
+
+.sheet-a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

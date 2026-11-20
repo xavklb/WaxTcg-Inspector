@@ -5,13 +5,14 @@ import {
   cheatSheet,
   deckPoints,
   deckStrength,
+  factFor,
   findBestDeck,
   isValidDeck,
   percentiles,
   strengths,
   themesOf,
 } from '../extension/lib/deck.js';
-import { runDeck } from '../extension/lib/runs.js';
+import { fetchArtistFans, runDeck } from '../extension/lib/runs.js';
 import { DEFAULT_SETTINGS, FACEOFF } from '../extension/lib/constants.js';
 import { NOW, respond } from '../dev/fixtures.js';
 
@@ -64,6 +65,39 @@ test('notes estimées : sens de chaque critère', () => {
   assert.equal(hit.points, 8);
   assert.equal(small.points, 1);
   assert.deepEqual(strengths(small).map((s) => s.key), ['underground', 'fresh', 'short']);
+});
+
+test('les 9 questions du jeu sont toutes couvertes', () => {
+  assert.equal(FACEOFF.criteria.length, 9);
+  assert.ok(FACEOFF.criteria.every((c) => c.question && c.question.endsWith('gagne')));
+  const [card] = buildCards([T(1)]);
+  assert.deepEqual(Object.keys(card.notes), FACEOFF.criteria.map((c) => c.key));
+});
+
+test('« L’artiste le plus suivi » : vrais fans quand ils sont connus', () => {
+  // L'artiste 1 a le son le plus populaire, mais l'artiste 2 a beaucoup plus de fans.
+  const tracks = [T(1, { rank: 900000, artistId: 'a1' }), T(2, { rank: 100000, artistId: 'a2' }), T(3, { rank: 500000, artistId: 'a3' })];
+  const approx = buildCards(tracks);
+  assert.equal(approx[0].notes.fans, 100);
+  assert.equal(approx[0].facts.fans, null);
+
+  const real = buildCards(tracks, { fans: { a1: 5_000, a2: 9_000_000, a3: 300_000 } });
+  assert.equal(real[1].notes.fans, 100);
+  assert.equal(real[0].notes.fans, 0);
+  assert.equal(real[1].facts.fans, 9_000_000);
+  assert.deepEqual(factFor(real[1], 'fans'), { kind: 'fans', value: 9_000_000 });
+  // Artiste absent de la liste : note neutre.
+  const partial = buildCards(tracks, { fans: { a1: 5_000, a2: 9_000_000 } });
+  assert.equal(partial[2].notes.fans, 50);
+});
+
+test('donnée qui décide de chaque question', () => {
+  const [c] = buildCards([T(1, { year: 1994, duration: 205, rarity: 'or' })], { values: { 1: 861 } });
+  assert.deepEqual(factFor(c, 'classic'), { kind: 'year', value: 1994 });
+  assert.deepEqual(factFor(c, 'short'), { kind: 'duration', value: 205 });
+  assert.deepEqual(factFor(c, 'quote'), { kind: 'notes', value: 861 });
+  assert.deepEqual(factFor(c, 'rare'), { kind: 'rarity', value: 'or' });
+  assert.equal(factFor(c, 'plays'), null);
 });
 
 test('bonus de thème moyen ajouté à toutes les notes', () => {
@@ -146,6 +180,8 @@ test('antisèche : la meilleure carte du deck pour chaque critère', () => {
   ]);
   const sheet = cheatSheet(cards);
   assert.equal(sheet.length, FACEOFF.criteria.length);
+  assert.equal(sheet.find((s) => s.criterion === 'long').question, 'Le son le plus long gagne');
+  assert.deepEqual(sheet.find((s) => s.criterion === 'long').picks[0].fact, { kind: 'duration', value: 400 });
   const pick = (key) => sheet.find((s) => s.criterion === key).picks[0].id;
   assert.equal(pick('plays'), '1');
   assert.equal(pick('underground'), '2');
@@ -154,16 +190,59 @@ test('antisèche : la meilleure carte du deck pour chaque critère', () => {
   assert.ok(sheet.every((s) => s.picks.length === 5));
 });
 
-test('runDeck : propose un deck valide, plus fort que le deck de démo', async () => {
+function demoApi({ failArtists = false } = {}) {
   const calls = [];
-  const api = { async get(path) { calls.push(path); return structuredClone(respond(path)); } };
-  const res = await runDeck(api, DEFAULT_SETTINGS, { now: () => NOW });
-  assert.deepEqual(calls, ['/api/game', '/api/stats', '/api/faceoff']);
+  return {
+    calls,
+    async get(path) {
+      calls.push(path);
+      if (failArtists && path.startsWith('/api/artists')) throw new Error('HTTP 500');
+      return structuredClone(respond(path));
+    },
+  };
+}
+
+test('fans des artistes : pages de 60, comme le site', async () => {
+  const pages = [
+    { items: Array.from({ length: 60 }, (_, i) => ({ artist: { id: `a${i}`, fans: i * 10 } })), total: 75 },
+    { items: Array.from({ length: 15 }, (_, i) => ({ artist: { id: `b${i}`, fans: 7 } })), total: 75 },
+  ];
+  const calls = [];
+  const api = { async get(path) { calls.push(path); return pages[calls.length - 1]; } };
+  const fans = await fetchArtistFans(api);
+  assert.deepEqual(calls, ['/api/artists?started=1&offset=0&limit=60', '/api/artists?started=1&offset=60&limit=60']);
+  assert.equal(Object.keys(fans).length, 75);
+  assert.equal(fans.a3, 30);
+});
+
+test('runDeck : propose un deck valide, plus fort que le deck de démo', async () => {
+  const api = demoApi();
+  const saved = [];
+  const res = await runDeck(api, DEFAULT_SETTINGS, { now: () => NOW, fansCache: { get: async () => null, set: async (e) => saved.push(e) } });
+  assert.deepEqual(api.calls, ['/api/game', '/api/stats', '/api/faceoff', '/api/artists?started=1&offset=0&limit=60']);
+  assert.equal(res.fansSource, 'api');
+  assert.equal(saved.length, 1);
+  assert.ok(Object.keys(saved[0].fans).length > 0);
   assert.equal(res.current.cards.length, 5);
   assert.equal(res.best.cards.length, 5);
   assert.ok(res.best.valid);
   assert.ok(res.best.points <= 20);
   assert.ok(res.best.strength > res.current.strength);
   assert.equal(res.best.sheet.length, 9);
+  assert.ok(res.best.cards.every((c) => Number.isFinite(c.facts.fans)));
   assert.equal(res.gemsMax, 360);
+});
+
+test('runDeck : réutilise les fans gardés moins de 24 h', async () => {
+  const api = demoApi();
+  const cache = { at: NOW - 3_600_000, fans: { 101: 2_400_000 } };
+  const res = await runDeck(api, DEFAULT_SETTINGS, { now: () => NOW, fansCache: { get: async () => cache, set: async () => {} } });
+  assert.ok(!api.calls.some((p) => p.startsWith('/api/artists')));
+  assert.equal(res.fansSource, 'cache');
+});
+
+test('runDeck : sans liste d’artistes, retombe sur l’approximation', async () => {
+  const res = await runDeck(demoApi({ failArtists: true }), DEFAULT_SETTINGS, { now: () => NOW });
+  assert.equal(res.fansSource, 'approx');
+  assert.ok(res.best.valid);
 });
