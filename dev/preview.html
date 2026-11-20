@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aperçu WAX Inspector</title>
+    <link rel="stylesheet" href="../extension/sidepanel.css" />
+    <style>
+      body {
+        max-width: 400px;
+        min-height: 100vh;
+        margin: 0 auto;
+        border-inline: 1px solid #2c2836;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      // Simule les API Chrome : les requêtes sont servies par les données de démonstration.
+      import { respond } from './fixtures.js';
+
+      const mem = {};
+      window.chrome = {
+        tabs: {
+          query: async () => [{ id: 1, active: true, url: 'https://waxtcg.com/' }],
+          update: async () => ({}),
+          sendMessage: async (_id, msg) => {
+            await new Promise((r) => setTimeout(r, 30));
+            if (msg.type !== 'wax-inspector:get') return { ok: true };
+            const data = respond(msg.path);
+            return data ? { ok: true, status: 200, data: structuredClone(data) } : { ok: false, status: 404, error: 'introuvable' };
+          },
+        },
+        storage: {
+          local: {
+            get: async (key) => ({ [key]: mem[key] }),
+            set: async (obj) => Object.assign(mem, obj),
+          },
+        },
+      };
+      await import('../extension/sidepanel.js');
+    </script>
+  </body>
+</html>

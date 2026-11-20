@@ -1,0 +1,4 @@
+// Un clic sur l'icône de l'extension ouvre le panneau latéral.
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((err) => console.error('WAX Inspector :', err));
