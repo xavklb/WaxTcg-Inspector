@@ -214,8 +214,10 @@ export function reviewListing(listing, detail, track, now) {
     }
   }
   const hoursLeft = (listing.expiresAt - now) / 3_600_000;
+  const mineEntry = (detail?.listings ?? []).find((l) => l && l.id === listing.id);
   return {
     listing,
+    serial: mineEntry?.serial ?? null,
     track,
     quote,
     range,

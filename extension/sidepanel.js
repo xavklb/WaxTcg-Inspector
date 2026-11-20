@@ -1,6 +1,14 @@
 import { WaxApi } from './lib/api.js';
 import { runAuctions, runBuy, runDeck, runSell } from './lib/runs.js';
 import { strengths } from './lib/deck.js';
+import {
+  ANNOUNCE_PLACEHOLDERS,
+  CHAT_MAX_LENGTH,
+  DEFAULT_ANNOUNCE,
+  MAX_ANNOUNCE_COUNT,
+  formatAnnouncement,
+  normalizeAnnounce,
+} from './lib/announce.js';
 import { DEFAULT_SETTINGS, FACEOFF, MIN_DELAY_MS, RARITY, normalizeSettings } from './lib/constants.js';
 import { ago, compact, duration, fmt, mmss, pct } from './lib/format.js';
 
@@ -11,6 +19,7 @@ const api = new WaxApi();
 const state = {
   tab: 'buy',
   settings: { ...DEFAULT_SETTINGS },
+  announce: { ...DEFAULT_ANNOUNCE },
   results: {},
   running: null,
   progress: '',
@@ -225,6 +234,96 @@ function saleCard(r) {
   );
 }
 
+async function copyText(text, textarea) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      textarea.select();
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Annonce de mes ventes à copier dans le chat du label (jamais envoyée par l'extension). */
+function announcePanel(res) {
+  const listings = res.listings.map((r) => ({
+    title: r.track?.title,
+    artist: r.track?.artist,
+    price: r.listing?.price,
+    rarity: r.track?.rarity,
+    serial: r.serial ?? null,
+  }));
+  if (!listings.length) return null;
+  const max = Math.min(MAX_ANNOUNCE_COUNT, listings.length);
+  const count = () => Math.min(state.announce.count, max);
+
+  const output = h('textarea', { class: 'announce-text', readonly: true, rows: 4, 'aria-label': 'Annonce à copier' });
+  const info = h('span', { class: 'progress num' });
+  const copied = h('span', { class: 'progress' });
+  const update = () => {
+    const a = formatAnnouncement(listings, { ...state.announce, count: count() });
+    output.value = a.text;
+    const dropped = a.requested - a.included;
+    info.textContent = `${a.length}/${CHAT_MAX_LENGTH} signes${dropped > 0 ? ` · ${dropped} titre${dropped > 1 ? 's' : ''} retiré${dropped > 1 ? 's' : ''} pour tenir` : ''}`;
+    copied.textContent = '';
+  };
+  const save = () => {
+    store.set('announce', state.announce);
+    update();
+  };
+
+  const select = h(
+    'select',
+    {
+      'aria-label': 'Nombre de titres dans l’annonce',
+      onchange: (e) => {
+        state.announce.count = Number(e.target.value);
+        save();
+      },
+    },
+    Array.from({ length: max }, (_, i) => i + 1).map((n) => h('option', { value: n, selected: n === count() }, `${n} titre${n > 1 ? 's' : ''}`)),
+  );
+  const upper = h('input', {
+    type: 'checkbox',
+    id: 'announce-upper',
+    checked: state.announce.uppercase,
+    onchange: (e) => {
+      state.announce.uppercase = e.target.checked;
+      save();
+    },
+  });
+  const copyBtn = h(
+    'button',
+    {
+      class: 'btn primary small',
+      type: 'button',
+      onclick: async () => {
+        copied.textContent = (await copyText(output.value, output)) ? 'Copié !' : 'Copie impossible : sélectionne le texte.';
+      },
+    },
+    'Copier',
+  );
+  update();
+
+  return h(
+    'section',
+    { class: 'announce' },
+    h('h2', { class: 'section' }, 'Annonce pour le chat du label'),
+    h('div', { class: 'announce-controls' }, select, h('label', { class: 'check', for: 'announce-upper' }, upper, 'Titre et artiste en majuscules')),
+    output,
+    h('div', { class: 'actions' }, copyBtn, info, copied),
+    h(
+      'p',
+      { class: 'note' },
+      'L’extension n’envoie rien : colle l’annonce dans Social → Discussion du label et envoie-la toi-même. Le format se règle dans Réglages.',
+    ),
+  );
+}
+
 function renderSell(res) {
   return [
     h('p', { class: 'summary num' }, [
@@ -234,6 +333,7 @@ function renderSell(res) {
     ].filter(Boolean).map((t) => h('span', null, t))),
     h('h2', { class: 'section' }, `Mes annonces (${res.listings.length})`),
     res.listings.length ? res.listings.map(listingCard) : h('p', { class: 'empty' }, 'Aucune annonce en cours.'),
+    announcePanel(res),
     h('h2', { class: 'section' }, `À mettre en vente (${res.sales.length}${res.candidates > res.checked ? ` sur ${res.candidates}` : ''})`),
     res.sales.length
       ? res.sales.map(saleCard)
@@ -442,6 +542,68 @@ function settingsView() {
     ),
   );
   state.saved = false;
+  return [form, announceSettingsView()];
+}
+
+const ANNOUNCE_FIELDS = [
+  { key: 'header', label: 'Format du message', hint: `Champs : ${ANNOUNCE_PLACEHOLDERS.header.join(' ')}` },
+  { key: 'item', label: 'Format d’un titre', hint: `Champs : ${ANNOUNCE_PLACEHOLDERS.item.join(' ')}` },
+  { key: 'separator', label: 'Séparateur entre les titres' },
+];
+
+const ANNOUNCE_SAMPLE = [
+  { title: 'Dernier métro', artist: 'Kalia', price: 980, rarity: 'or', serial: 412 },
+  { title: 'Sans filtre', artist: 'Vega', price: 305, rarity: 'hit', serial: 1288 },
+];
+
+function announceSettingsView() {
+  const inputs = {};
+  const preview = h('p', { class: 'note' });
+  const draft = () => normalizeAnnounce({ ...state.announce, ...Object.fromEntries(ANNOUNCE_FIELDS.map((f) => [f.key, inputs[f.key].value])) });
+  const refresh = () => {
+    const a = formatAnnouncement(ANNOUNCE_SAMPLE, { ...draft(), count: 2 });
+    preview.textContent = `Exemple (${a.length}/${CHAT_MAX_LENGTH}) : ${a.text}`;
+  };
+  const form = h(
+    'form',
+    {
+      class: 'settings',
+      onsubmit: async (e) => {
+        e.preventDefault();
+        state.announce = draft();
+        await store.set('announce', state.announce);
+        state.announceSaved = true;
+        render();
+      },
+    },
+    h('h2', { class: 'section' }, 'Annonce pour le chat du label'),
+    ANNOUNCE_FIELDS.map((f) => {
+      inputs[f.key] = h('input', { id: `a-${f.key}`, type: 'text', maxlength: CHAT_MAX_LENGTH, value: state.announce[f.key], oninput: refresh });
+      return h('div', { class: 'field' }, h('label', { for: `a-${f.key}` }, f.label), f.hint ? h('span', { class: 'hint' }, f.hint) : null, inputs[f.key]);
+    }),
+    preview,
+    h(
+      'div',
+      { class: 'actions' },
+      h('button', { class: 'btn primary', type: 'submit' }, 'Enregistrer'),
+      h(
+        'button',
+        {
+          class: 'btn',
+          type: 'button',
+          onclick: async () => {
+            state.announce = { ...DEFAULT_ANNOUNCE, count: state.announce.count, uppercase: state.announce.uppercase };
+            await store.set('announce', state.announce);
+            render();
+          },
+        },
+        'Format par défaut',
+      ),
+      state.announceSaved ? h('span', { class: 'progress' }, 'Enregistré.') : null,
+    ),
+  );
+  state.announceSaved = false;
+  refresh();
   return form;
 }
 
@@ -552,6 +714,7 @@ api.onRequest = (n) => {
 
 async function init() {
   state.settings = normalizeSettings(await store.get('settings'));
+  state.announce = normalizeAnnounce(await store.get('announce'));
   state.results = (await store.get('results')) ?? {};
   render();
 }
