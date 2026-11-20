@@ -98,6 +98,11 @@ button {
   font-weight: 600;
 }
 
+.tab-icon {
+  flex: 0 0 34px;
+  font-size: 15px;
+}
+
 .tab[aria-selected='true'] {
   color: var(--text);
   border-bottom-color: var(--accent);

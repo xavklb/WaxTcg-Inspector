@@ -9,6 +9,7 @@
     /^\/api\/auctions$/,
     /^\/api\/faceoff$/,
     /^\/api\/wall$/,
+    /^\/api\/search\?q=[A-Za-z0-9%._~!*'()-]+$/,
     /^\/api\/artists\?[A-Za-z0-9=&%._,-]*$/,
     /^\/api\/market\?[A-Za-z0-9=&%._-]*$/,
     /^\/api\/market\/\d+$/,

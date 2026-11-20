@@ -3,6 +3,20 @@
 import { FACEOFF, MARKET, RARITIES, RARITY } from './constants.js';
 import { buildCards, cheatSheet, deckPoints, deckStrength, findBestDeck, isValidDeck } from './deck.js';
 import {
+  SNEP_API_LATEST,
+  artistQuery,
+  evaluateUpgrade,
+  isoMinusDays,
+  matchTrack,
+  normalizeName,
+  normalizeTitle,
+  parseSnepHtml,
+  rarityRank,
+  searchQuery,
+  snepSinglesUrl,
+  targetRarity,
+} from './snep.js';
+import {
   collectionCandidates,
   demandCandidates,
   evaluateAuction,
@@ -101,6 +115,89 @@ function summarizeDeck(cards) {
     strength: deckStrength(cards),
     valid: isValidDeck(cards),
     sheet: cheatSheet(cards),
+  };
+}
+
+const MAX_SNEP_SEARCHES = 80;
+
+/**
+ * Certifications SNEP pas encore appliquées par WAX : lit le dernier lot de singles certifiés
+ * sur snepmusique.com (`fetchText`), cherche chaque titre dans WAX et garde ceux encore
+ * sous leur nouvelle rareté.
+ */
+export async function runSnep(api, settings, { now = Date.now, progress = () => {}, fetchText } = {}) {
+  if (typeof fetchText !== 'function') throw new Error('Lecture du site du SNEP indisponible.');
+
+  progress('Lecture des certifications du SNEP…');
+  const certs = [];
+  for (let page = 1; page <= 3; page += 1) {
+    const items = parseSnepHtml(await fetchText(snepSinglesUrl(page))).filter((c) => /single/i.test(c.category));
+    certs.push(...items);
+    const latest = certs.reduce((m, c) => (c.certifiedOn && c.certifiedOn > m ? c.certifiedOn : m), '');
+    if (!items.length || items.some((c) => c.certifiedOn && c.certifiedOn < isoMinusDays(latest, 6))) break;
+  }
+  if (!certs.length) throw new Error('Aucune certification lue sur le site du SNEP (la page a peut-être changé).');
+
+  let publishedAt = null;
+  try {
+    const latestPost = JSON.parse(await fetchText(SNEP_API_LATEST));
+    const t = Date.parse(`${latestPost?.[0]?.date_gmt}Z`);
+    publishedAt = Number.isFinite(t) ? t : null;
+  } catch {
+    // information facultative
+  }
+
+  // Le dernier lot : les certifications constatées dans les 6 jours avant la plus récente.
+  const latestCertifiedOn = certs.reduce((m, c) => (c.certifiedOn && c.certifiedOn > m ? c.certifiedOn : m), '');
+  const cutoff = isoMinusDays(latestCertifiedOn, 6);
+  const seen = new Set();
+  const batch = certs.filter((c) => {
+    const key = `${normalizeTitle(c.title)}|${normalizeName(c.artist)}`;
+    if (!targetRarity(c.level) || !c.certifiedOn || c.certifiedOn < cutoff || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const game = await api.get('/api/game');
+  const clock = serverClock(game?.serverNow, now);
+  const w = wallet(game);
+  const budget = budgetOf(settings, w);
+
+  const pending = [];
+  const already = [];
+  const unmatched = [];
+  const toCheck = batch.slice(0, MAX_SNEP_SEARCHES);
+  for (const [i, cert] of toCheck.entries()) {
+    progress(`Recherche dans WAX : ${cert.title} (${i + 1}/${toCheck.length})…`);
+    const search = (q) => api.get(`/api/search?q=${encodeURIComponent(q)}`, { ttlMs: 10 * 60_000 });
+    let track = matchTrack(cert, (await search(searchQuery(cert)))?.tracks ?? []);
+    // Titre trop courant (ex. « Christophe » d'Orelsan, noyé parmi les sons du chanteur Christophe) :
+    // seconde recherche par l'artiste principal.
+    if (!track && artistQuery(cert)) track = matchTrack(cert, (await search(artistQuery(cert)))?.tracks ?? []);
+    if (!track) {
+      unmatched.push(cert);
+      continue;
+    }
+    if (rarityRank(track.rarity) >= rarityRank(targetRarity(cert.level))) {
+      already.push({ cert, track });
+      continue;
+    }
+    const card = await api.get(`/api/cards/${track.id}`, { ttlMs: 5 * 60_000 });
+    pending.push(evaluateUpgrade(cert, track, card, { budget, now: clock() }));
+  }
+  pending.sort((a, b) => Number(b.affordable) - Number(a.affordable) || (b.profit ?? -Infinity) - (a.profit ?? -Infinity));
+
+  return {
+    at: now(),
+    wallet: w,
+    budget,
+    publishedAt,
+    latestCertifiedOn,
+    batchSize: batch.length,
+    checked: toCheck.length,
+    pending,
+    already,
+    unmatched,
   };
 }
 

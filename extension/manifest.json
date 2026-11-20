@@ -5,7 +5,7 @@
   "description": "Aide à la décision pour le Marché de WAX : quoi acheter, quoi vendre, à quel prix. Lecture seule : n'achète et ne vend jamais à ta place.",
   "minimum_chrome_version": "116",
   "permissions": ["sidePanel", "storage"],
-  "host_permissions": ["https://waxtcg.com/*"],
+  "host_permissions": ["https://waxtcg.com/*", "https://snepmusique.com/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "Ouvrir WAX Inspector" },
   "side_panel": { "default_path": "sidepanel.html" },

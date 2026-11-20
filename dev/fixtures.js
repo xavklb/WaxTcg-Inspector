@@ -2,6 +2,7 @@
 // Servent aux tests (test/runs.test.js) et à l'aperçu du panneau (dev/preview.html).
 import { RARITIES, RARITY } from '../extension/lib/constants.js';
 import { allowedRange } from '../extension/lib/analysis.js';
+import { normalizeName } from '../extension/lib/snep.js';
 
 export const NOW = 1_795_171_000_000;
 const H = 3_600_000;
@@ -266,6 +267,78 @@ const AUCTIONS = {
   serverNow: NOW,
 };
 
+// ---------------------------------------------------------------- Certifications SNEP
+
+// Deux cartes certifiées par le SNEP mais pas encore montées dans WAX.
+addSpec({ id: 7200, rarity: 'hit', title: 'Dernier été', artist: 'Saphir', quote: 260, best: 240, sellers: 2, recent: 6, extra: { rank: 850_000, year: 2026, duration: 190, region: 'fr', style: 'rap' } });
+addSpec({ id: 7201, rarity: 'or', title: 'Mirage rouge (feat. Kalia)', artist: 'Atlas', quote: 1100, best: 1050, sellers: 3, recent: 5, extra: { rank: 900_000, year: 2025, region: 'fr', style: 'rap' } });
+
+const snepBlock = ({ titre, artiste, certif, sortie = '01/01/2025', constat, categorie = 'Singles' }) => `
+<div class="certification" data-aos="fade-up" data-aos-delay="100">
+<div class="visuel"><img width="190" height="190" src="https://snepmusique.com/x.jpg" alt="" /></div>
+<div class="description">
+<div class="categorie">${categorie}</div>
+<div class="titre">${titre}</div>
+<div class="artiste">${artiste}</div>
+<div class="editeur">LABEL DÉMO / DISTRIBUTEUR</div>
+</div>
+<div class="certif icon-or">${certif}</div>
+<div class="block_dates">
+<div class="date"><span>Date de sortie</span>${sortie}</div>
+<div class="date"><span>Date de constat</span>${constat}</div>
+<div class="date"><span>Durée d'obtention</span>1 an</div>
+</div>
+</div>`;
+
+export const SNEP_HTML = `<html><body><main>${[
+  { titre: 'DERNIER ÉTÉ', artiste: 'SAPHIR', certif: 'Or', constat: '13/11/2026' },
+  { titre: 'MIRAGE ROUGE', artiste: 'ATLAS FEAT. KALIA', certif: 'Platine', constat: '13/11/2026' },
+  { titre: 'SORTIE DE NUIT', artiste: 'NOVA', certif: 'Or', constat: '13/11/2026' },
+  { titre: 'CARROUSEL', artiste: 'ATLAS', certif: 'Or', constat: '13/11/2026' }, // déjà Or dans WAX
+  { titre: 'L&#8217;INCONNU', artiste: 'PERSONNE', certif: 'Or', constat: '13/11/2026' }, // absent de WAX
+  { titre: 'GRAND ALBUM', artiste: 'SAPHIR', certif: 'Platine', constat: '13/11/2026', categorie: 'Albums' },
+  { titre: 'NÉON', artiste: 'NOVA', certif: 'Or', constat: '06/11/2026' }, // lot précédent
+]
+  .map(snepBlock)
+  .join('')}</main></body></html>`;
+
+export const SNEP_LATEST_JSON = JSON.stringify([{ date_gmt: '2026-11-16T13:45:54' }]);
+
+/** Réponses de démonstration du site du SNEP. */
+export function snepRespond(url) {
+  if (url.includes('/wp-json/')) return SNEP_LATEST_JSON;
+  if (url === 'https://snepmusique.com/les-certifications/?categorie=Singles') return SNEP_HTML;
+  return '<html><body></body></html>';
+}
+
+function searchTracks(q) {
+  const want = normalizeName(q);
+  const tracks = [...SPECS.values()].map((s) => s.track).filter((t) => normalizeName(t.title).includes(want)).slice(0, 30);
+  return { tracks, imported: [] };
+}
+
+function cardInfo(id) {
+  const s = SPECS.get(id);
+  if (!s) return null;
+  const i = ARTISTS.indexOf(s.track.artist);
+  const sorted = [...s.listings].sort((a, b) => a.price - b.price);
+  return {
+    track: s.track,
+    artist: { name: s.track.artist, fans: i >= 0 ? ARTIST_FANS[i] : 10_000, picture: '' },
+    market: {
+      quote: s.quote,
+      trend: 0,
+      trend7: null,
+      cheapest: sorted[0]?.price ?? null,
+      listings: s.listings.length,
+      sales: [...s.history].sort((a, b) => b.at - a.at).slice(0, 10).map((x) => ({ ...x, special: false })),
+      chart: s.history,
+    },
+    popularity: { rank: s.track.rank },
+    history: { addedAt: NOW - 30 * 86_400_000, ups: [] },
+  };
+}
+
 // ---------------------------------------------------------------- Routes
 
 function marketItem(spec) {
@@ -319,6 +392,9 @@ export function respond(path) {
   if (p === '/api/faceoff') return FACEOFF;
   if (p === '/api/artists') return artistsPage(url.searchParams);
   if (p === '/api/wall') return WALL;
+  if (p === '/api/search') return searchTracks(url.searchParams.get('q') ?? '');
+  const card = p.match(/^\/api\/cards\/(\d+)$/);
+  if (card) return cardInfo(card[1]);
   if (p === '/api/market') return marketList(url.searchParams);
   const m = p.match(/^\/api\/market\/(\d+)$/);
   if (m) return detail(m[1]);
