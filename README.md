@@ -20,9 +20,6 @@ L'extension sera bientôt publiée sur le **Chrome Web Store**. Ce dépôt reste
 
 ## Installation
 
-L'extension sera bientôt disponible sur le **Chrome Web Store**. Ce dépôt restera public et à jour : tu peux toujours l'installer depuis les sources.
-
-
 1. `chrome://extensions` → active le **Mode développeur**.
 2. **Charger l'extension non empaquetée** → dossier `extension/`.
 3. Ouvre waxtcg.com connecté, clique sur l'icône, puis **Analyser**.

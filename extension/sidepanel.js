@@ -14,6 +14,7 @@ import { DEFAULT_SETTINGS, FACEOFF, MIN_DELAY_MS, RARITY, normalizeSettings } fr
 import { ago, compact, duration, fmt, mmss, pct } from './lib/format.js';
 
 const DAY = 86_400_000;
+const LOGO = new URL('./icons/icon-32.png', import.meta.url).href;
 const app = document.getElementById('app');
 const api = new WaxApi();
 
@@ -969,7 +970,7 @@ function header() {
   return h(
     'div',
     { class: 'top' },
-    h('div', { class: 'brand' }, h('h1', null, h('span', null, 'WAX'), ' Inspector'), walletView()),
+    h('div', { class: 'brand' }, h('h1', null, h('img', { class: 'logo', src: LOGO, alt: '' }), 'WAX Inspector'), walletView()),
     h(
       'nav',
       { class: 'tabs', role: 'tablist' },

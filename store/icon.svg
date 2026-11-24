@@ -1,19 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <!-- Icône de WAX Inspector : un vinyle qui sert de loupe. Source des PNG (npm run store-assets). -->
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff7aa8" />
-      <stop offset="1" stop-color="#b48cff" />
-    </linearGradient>
-  </defs>
-  <rect width="128" height="128" rx="28" fill="url(#bg)" />
-  <path d="M80 80 L104 104" stroke="#160b16" stroke-width="17" stroke-linecap="round" />
-  <circle cx="55" cy="55" r="37" fill="#160b16" />
+  <rect width="128" height="128" rx="28" fill="#1ed760" />
+  <path d="M80 80 L104 104" stroke="#121212" stroke-width="17" stroke-linecap="round" />
+  <circle cx="55" cy="55" r="37" fill="#121212" />
   <g class="detail" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="2">
     <circle cx="55" cy="55" r="30" />
     <circle cx="55" cy="55" r="23.5" />
   </g>
-  <circle cx="55" cy="55" r="14" fill="url(#bg)" />
-  <circle cx="55" cy="55" r="3.5" fill="#160b16" />
+  <circle cx="55" cy="55" r="14" fill="#1ed760" />
+  <circle cx="55" cy="55" r="3.5" fill="#121212" />
   <path class="detail" d="M31 42 A27 27 0 0 1 43 29" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="4" stroke-linecap="round" />
 </svg>
