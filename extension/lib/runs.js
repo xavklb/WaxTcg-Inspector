@@ -20,12 +20,16 @@ import {
   collectionCandidates,
   demandCandidates,
   evaluateAuction,
-  evaluateDemandSale,
   evaluateFlip,
   evaluateSale,
+  filterSaleCandidates,
+  mergeSaleCandidates,
+  preScore,
+  rankSales,
   reviewListing,
   screenAuctions,
   screenFlips,
+  withoutListed,
 } from './analysis.js';
 
 const DETAIL_TTL = 5 * 60_000;
@@ -274,7 +278,11 @@ export async function runDeck(api, settings, { now = Date.now, progress = () => 
   };
 }
 
-/** Mes annonces à corriger, et les cartes de ma collection à mettre en vente. */
+/**
+ * Mes annonces à corriger, et les cartes de ma collection à mettre en vente, les plus intéressantes d'abord :
+ * doublons, cartes « hype » et cartes demandées (souhaits du Marché, annonces « Cherche » de WAX FM).
+ * Selon les réglages, les cartes en coup de cœur et les titres de mes artistes protégés sont écartés.
+ */
 export async function runSell(api, settings, { now = Date.now, progress = () => {} } = {}) {
   progress('Lecture de ta collection…');
   const game = await api.get('/api/game');
@@ -297,20 +305,11 @@ export async function runSell(api, settings, { now = Date.now, progress = () => 
   const rank = { undercut: 0, low: 1, ok: 2 };
   listings.sort((a, b) => rank[a.status] - rank[b.status] || a.hoursLeft - b.hoursLeft);
 
-  const candidates = collectionCandidates({
-    tracks: game?.tracks ?? [],
-    stats,
-    protectedArtists: game?.state?.protectArtists ?? [],
-    hypeRatio: settings.hypeRatio,
-    minValue: settings.minHypeValue,
-  });
-  const top = candidates.slice(0, settings.maxDetails);
-  const sales = [];
-  for (const [i, c] of top.entries()) {
-    progress(`Ta collection : ${c.track.title} (${i + 1}/${top.length})…`);
-    const detail = await api.get(`/api/market/${c.track.id}`, { ttlMs: DETAIL_TTL });
-    sales.push(evaluateSale(c, detail, clock()));
-  }
+  // Un numéro déjà en vente n'est jamais proposé une seconde fois.
+  const listedSerials = {};
+  for (const r of listings) if (r.serial != null) (listedSerials[String(r.listing.trackId)] ??= []).push(r.serial);
+  const owned = withoutListed(stats, listedSerials);
+  const listedTracks = new Set(open.map((l) => String(l.trackId)));
 
   // Cartes demandées : les plus souhaitées du Marché et les annonces « Cherche » du mur WAX FM.
   progress('Lecture des cartes demandées…');
@@ -320,19 +319,24 @@ export async function runSell(api, settings, { now = Date.now, progress = () => 
   } catch (e) {
     if (e?.code === 'ABORTED') throw e;
   }
-  const demandAll = demandCandidates({
-    wanted: market?.wanted ?? [],
-    wallPosts,
+  const protectedArtists = game?.state?.protectArtists ?? [];
+  const collection = collectionCandidates({
     tracks: game?.tracks ?? [],
-    stats,
-    protectedArtists: game?.state?.protectArtists ?? [],
+    stats: owned,
+    protectedArtists,
+    hypeRatio: settings.hypeRatio,
+    minValue: settings.minHypeValue,
   });
-  const demandTop = demandAll.mine.slice(0, Math.min(10, settings.maxDetails));
-  const demand = [];
-  for (const [i, c] of demandTop.entries()) {
-    progress(`Cartes demandées : ${c.track.title} (${i + 1}/${demandTop.length})…`);
+  const demand = demandCandidates({ wanted: market?.wanted ?? [], wallPosts, tracks: game?.tracks ?? [], stats: owned, protectedArtists });
+  const { kept, liked } = filterSaleCandidates(mergeSaleCandidates(collection, demand.mine), settings);
+
+  // Les fiches du Marché (1 requête chacune) vont aux cartes les plus prometteuses.
+  const top = [...kept].sort((a, b) => preScore(b) - preScore(a)).slice(0, settings.maxDetails);
+  const sales = [];
+  for (const [i, c] of top.entries()) {
+    progress(`Ta collection : ${c.track.title} (${i + 1}/${top.length})…`);
     const detail = await api.get(`/api/market/${c.track.id}`, { ttlMs: DETAIL_TTL });
-    demand.push(evaluateDemandSale(c, detail, clock()));
+    sales.push(evaluateSale(c, detail, clock()));
   }
 
   return {
@@ -344,12 +348,12 @@ export async function runSell(api, settings, { now = Date.now, progress = () => 
     openCount: open.length,
     maxOpen: MARKET.maxOpenListings,
     listings,
-    candidates: candidates.length,
+    candidates: kept.length,
     checked: top.length,
-    sales,
-    demand,
-    demandCount: demandAll.mine.length,
-    demandOthers: demandAll.others,
+    toSell: rankSales(sales),
+    liked,
+    options: { sellFavorites: settings.sellFavorites !== false, sellProtectedArtists: settings.sellProtectedArtists !== false },
+    demandOthers: demand.others.filter((o) => !listedTracks.has(String(o.track.id))),
     wantPosts: wallPosts.filter((p) => p?.kind === 'want' && !p.mine).length,
   };
 }

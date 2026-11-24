@@ -337,6 +337,7 @@ export function demandCandidates({ wanted = [], wallPosts = [], tracks = [], sta
       value: stats?.values?.[id] ?? null,
       sellSerial: sell.serial,
       lastCopy: copies.length === 1,
+      upgradedFrom: copies.find((c) => c.origin)?.origin ?? null,
       favorite: locked.size > 0,
       favoriteSerials: [...locked].sort((a, b) => a - b),
       sellIsFavorite: locked.has(sell.serial),
@@ -348,71 +349,207 @@ export function demandCandidates({ wanted = [], wallPosts = [], tracks = [], sta
   return { mine, others };
 }
 
+// ---------------------------------------------------------------- Vente : quoi vendre en premier
+
+/** Poids du classement des ventes (voir evaluateSale). */
+export const SELL_PRIORITY = Object.freeze({
+  horizonDays: 3, // durée d'annonce la plus longue (72 h)
+  lastCopy: 0.5, // un dernier exemplaire compte pour moitié : tu perds la carte et sa valeur de collection
+  liked: 0.7, // coup de cœur ou artiste protégé (si tu acceptes de les vendre) : à gain égal, ils passent après
+  falling: 1.2, // prix en baisse : mieux vaut vendre tout de suite
+  fallingMomentum: -0.15, // baisse des 5 dernières ventes face aux 10 précédentes
+  wantedBoost: 1.5, // premier tri (avant les fiches) : une carte demandée part plus facilement
+});
+
+/** Retire de ma collection les numéros que j'ai déjà mis en vente, s'ils y figurent encore. */
+export function withoutListed(stats, listedSerials = {}) {
+  const ids = Object.keys(listedSerials ?? {});
+  if (!stats?.copies || !ids.length) return stats;
+  const copies = { ...stats.copies };
+  for (const id of ids) {
+    const listed = new Set((listedSerials[id] ?? []).map(Number));
+    if (copies[id]) copies[id] = copies[id].filter(([serial]) => !listed.has(Number(serial)));
+  }
+  return { ...stats, copies };
+}
+
 /**
- * Prix conseillé pour une carte demandée :
- * - quelqu'un en vend → juste sous le moins cher ;
- * - personne n'en vend → prime de demande sur la cote : ×2 (maximum autorisé) si plus de 100 souhaits,
- *   ×1,5 si plusieurs joueurs la cherchent ou si elle est souhaitée, ×1,25 sinon.
+ * Une seule liste de cartes à vendre : mes doublons et cartes « hype » (collectionCandidates),
+ * enrichis par la demande, plus les cartes demandées que j'ai (demandCandidates().mine).
+ * Chaque carte porte `wanted` (souhaitée au Marché ou cherchée sur WAX FM), `wishes`, `requests` et `posts`.
  */
-export function evaluateDemandSale(cand, detail, now) {
-  const others = otherListings(detail?.listings);
+export function mergeSaleCandidates(collection = [], demand = []) {
+  const byId = new Map();
+  const noDemand = { wishes: 0, requests: 0, posts: [], topWanted: false, marketBest: null, wanted: false };
+  for (const c of collection ?? []) if (c?.track?.id) byId.set(String(c.track.id), { ...noDemand, ...c });
+  for (const d of demand ?? []) {
+    if (!d?.track?.id) continue;
+    const info = {
+      wishes: d.wishes ?? 0,
+      requests: d.requests ?? 0,
+      posts: d.posts ?? [],
+      topWanted: Boolean(d.topWanted),
+      marketBest: d.marketBest ?? null,
+    };
+    info.wanted = info.wishes > 0 || info.requests > 0;
+    const id = String(d.track.id);
+    const known = byId.get(id);
+    if (known) {
+      Object.assign(known, info);
+      continue;
+    }
+    const base = RARITY[d.track.rarity]?.base ?? 0;
+    const value = d.value ?? 0;
+    byId.set(id, {
+      track: d.track,
+      value,
+      ratio: base ? value / base : 0,
+      copies: d.owned,
+      duplicates: d.owned - 1,
+      sellSerial: d.sellSerial,
+      lastCopy: d.lastCopy,
+      upgradedFrom: d.upgradedFrom ?? null,
+      reason: d.owned > 1 ? 'duplicate' : 'demand',
+      favorite: d.favorite,
+      favoriteSerials: d.favoriteSerials,
+      sellIsFavorite: d.sellIsFavorite,
+      protectedArtist: d.protectedArtist,
+      ...info,
+    });
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Écarte, selon mes réglages, les cartes en coup de cœur (le numéro à vendre a un cœur)
+ * et les titres de mes artistes protégés. `liked` compte ces cartes, écartées ou non.
+ */
+export function filterSaleCandidates(cands, { sellFavorites = true, sellProtectedArtists = true } = {}) {
+  const liked = { favorites: 0, protectedArtists: 0 };
+  const kept = [];
+  for (const c of cands ?? []) {
+    if (c.sellIsFavorite) liked.favorites += 1;
+    if (c.protectedArtist) liked.protectedArtists += 1;
+    if ((c.sellIsFavorite && !sellFavorites) || (c.protectedArtist && !sellProtectedArtists)) continue;
+    kept.push(c);
+  }
+  return { kept, liked };
+}
+
+const likedFactor = (c) => (c.sellIsFavorite ? SELL_PRIORITY.liked : 1) * (c.protectedArtist ? SELL_PRIORITY.liked : 1);
+const keepFactor = (c) => (c.duplicates > 0 ? 1 : SELL_PRIORITY.lastCopy);
+const recycleOf = (track) => RARITY[track?.rarity]?.recycle ?? 0;
+
+/** Premier tri, avant de lire les fiches du Marché : valeur nette estimée, demande, coups de cœur. */
+export function preScore(cand) {
+  const net = netAfterTax(cand.value ?? 0);
+  const gain = cand.duplicates > 0 ? net - recycleOf(cand.track) : net;
+  return Math.max(0, gain) * keepFactor(cand) * likedFactor(cand) * (cand.wanted ? SELL_PRIORITY.wantedBoost : 1);
+}
+
+/**
+ * Prime sur la cote quand personne d'autre n'en vend : ×2 (maximum autorisé) au-delà de 100 souhaits,
+ * ×1,5 si plusieurs joueurs la cherchent ou si elle est souhaitée, ×1,25 sinon.
+ */
+export function demandPremium({ wishes = 0, requests = 0 } = {}) {
+  if (wishes >= WISHES_HOT) return MARKET.above;
+  return requests >= 2 || wishes > 0 ? 1.5 : 1.25;
+}
+
+/**
+ * Chances de vendre sous `horizonDays` jours : les acheteurs arrivent au rythme des ventes des 7 derniers jours
+ * (loi de Poisson) et prennent d'abord les annonces moins chères ou au même prix (`ahead`, les miennes comprises).
+ * Une carte demandée a au moins 50 % de chances, 75 % sans autre vendeur, 90 % au-delà de 100 souhaits.
+ */
+export function saleChance({ perDay = 0, ahead = 0, wanted = false, noSeller = false, wishes = 0, horizonDays = SELL_PRIORITY.horizonDays } = {}) {
+  const mu = Math.max(0, perDay) * horizonDays;
+  let term = Math.exp(-mu);
+  let below = 0; // P(moins de ahead + 1 acheteurs)
+  for (let i = 0; i <= Math.min(Math.max(0, ahead), 50); i += 1) {
+    below += term;
+    term *= mu / (i + 1);
+  }
+  let p = 1 - below;
+  if (wanted) p = Math.max(p, noSeller ? (wishes >= WISHES_HOT ? 0.9 : 0.75) : 0.5);
+  return clamp(p, 0.02, 0.99);
+}
+
+/**
+ * Prix conseillé, chances de vente et priorité d'une carte de ma collection, avec la fiche du titre (/api/market/{id}).
+ *
+ * Prix conseillé (`price`) :
+ * - personne d'autre n'en vend : prime de demande sur la cote si elle est demandée (demandPremium),
+ *   sinon le prix des dernières ventes ;
+ * - sinon juste sous le moins cher des autres vendeurs, sans dépasser le prix des dernières ventes
+ *   si elle n'est pas demandée.
+ * `fairPrice` : le prix des dernières ventes (médiane des 5 dernières, ou la cote).
+ *
+ * Priorité (`score`, en ♫) = gain × chances de vendre sous 3 jours, puis :
+ * ×0,5 pour un dernier exemplaire, ×0,7 pour un coup de cœur ou un artiste protégé, ×1,2 si le prix baisse.
+ * Le gain d'un doublon est ce que la vente rapporte de plus que le recyclage.
+ */
+export function evaluateSale(cand, detail, now) {
+  const listings = (detail?.listings ?? []).filter((l) => l && l.price > 0);
+  const others = otherListings(listings);
   const stats = salesStats(detail?.history, now);
   const quote = detail?.quote ?? cand.value ?? 0;
   const range = detail?.range ?? allowedRange(quote, cand.track.rarity);
   const cheapestOther = others[0]?.price ?? null;
   const fairPrice = clamp(Math.round(stats.recentMedian ?? quote), range.min, range.max);
+  const wanted = cand.wanted ?? ((cand.wishes ?? 0) > 0 || (cand.requests ?? 0) > 0);
+  const recycle = recycleOf(cand.track);
+
   let premium = null;
   let price;
   if (cheapestOther == null) {
-    premium = cand.wishes >= WISHES_HOT ? MARKET.above : cand.requests >= 2 || cand.wishes > 0 ? 1.5 : 1.25;
-    price = clamp(Math.round(Math.max(fairPrice, quote) * premium), range.min, range.max);
+    premium = wanted ? demandPremium(cand) : null;
+    price = premium ? clamp(Math.round(Math.max(fairPrice, quote) * premium), range.min, range.max) : fairPrice;
   } else {
-    price = clamp(cheapestOther - 1, range.min, range.max);
+    price = clamp(wanted ? cheapestOther - 1 : Math.min(fairPrice, cheapestOther - 1), range.min, range.max);
   }
+  const net = netAfterTax(price);
+  const ahead = listings.filter((l) => l.price <= price).length;
+  const chance = saleChance({ perDay: stats.perDay, ahead, wanted, noSeller: cheapestOther == null, wishes: cand.wishes ?? 0 });
+  const falling = stats.momentum != null && stats.momentum <= SELL_PRIORITY.fallingMomentum;
+  const gain = cand.duplicates > 0 ? net - recycle : net;
+
+  let verdict = 'sell';
+  if (cand.duplicates > 0 && net <= recycle) verdict = 'recycle';
+  else if (wanted && cheapestOther == null) verdict = 'no-seller';
+  else if (stats.count7d === 0 && !wanted) verdict = 'illiquid';
+  else if (falling) verdict = 'sell-fast';
+
+  const score =
+    verdict === 'recycle' ? 0 : Math.max(0, gain) * chance * keepFactor(cand) * likedFactor(cand) * (falling ? SELL_PRIORITY.falling : 1);
+
   return {
     ...cand,
+    wanted,
     quote,
     range,
     stats,
     cheapestOther,
     competitors: others.length,
+    ahead,
+    listedByMe: listings.filter((l) => l.mine).length,
+    cantBeat: cheapestOther != null && price >= cheapestOther,
     premium,
     price,
-    net: netAfterTax(price),
+    net,
     fairPrice,
     fairNet: netAfterTax(fairPrice),
-    verdict: cheapestOther == null ? 'no-seller' : 'compete',
+    recycle,
+    gain,
+    chance,
+    falling,
+    score: Math.round(score),
+    verdict,
   };
 }
 
-/** Prix conseillés pour une carte de ma collection, avec la fiche détaillée du titre. */
-export function evaluateSale(candidate, detail, now) {
-  const others = otherListings(detail?.listings);
-  const stats = salesStats(detail?.history, now);
-  const quote = detail?.quote ?? candidate.value;
-  const range = detail?.range ?? allowedRange(quote, candidate.track.rarity);
-  const cheapestOther = others[0]?.price ?? null;
-  const fairPrice = clamp(Math.round(stats.recentMedian ?? quote), range.min, range.max);
-  const fastPrice = cheapestOther != null ? clamp(Math.min(fairPrice, cheapestOther - 1), range.min, range.max) : fairPrice;
-  const recycle = RARITY[candidate.track.rarity]?.recycle ?? 0;
-
-  let verdict = 'sell';
-  if (candidate.duplicates > 0 && netAfterTax(fastPrice) <= recycle) verdict = 'recycle';
-  else if (stats.count7d === 0) verdict = 'illiquid';
-  else if (stats.momentum != null && stats.momentum <= -0.15) verdict = 'sell-fast';
-
-  return {
-    ...candidate,
-    quote,
-    range,
-    stats,
-    cheapestOther,
-    competitors: others.length,
-    fairPrice,
-    fastPrice,
-    fairNet: netAfterTax(fairPrice),
-    fastNet: netAfterTax(fastPrice),
-    recycle,
-    verdict,
-  };
+/** Les ventes les plus intéressantes d'abord ; celles qu'il vaut mieux recycler à la fin. */
+export function rankSales(sales) {
+  return [...(sales ?? [])].sort(
+    (a, b) => Number(a.verdict === 'recycle') - Number(b.verdict === 'recycle') || b.score - a.score || b.net - a.net,
+  );
 }

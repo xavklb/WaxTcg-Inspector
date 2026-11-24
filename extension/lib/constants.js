@@ -74,6 +74,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   hypeRatio: 3, // « hype » : valeur >= 3 × la cote de base de la rareté
   minHypeValue: 100, // valeur minimum pour proposer de vendre une carte unique
   auctionHorizonMin: 120, // enchères qui se terminent dans ce délai
+  sellFavorites: true, // proposer à la vente mes cartes en coup de cœur ❤
+  sellProtectedArtists: true, // proposer à la vente les titres de mes artistes protégés 🛡
 });
 
 const LIMITS = {
@@ -90,6 +92,8 @@ const LIMITS = {
   auctionHorizonMin: [5, 24 * 60],
 };
 
+const FLAGS = ['sellFavorites', 'sellProtectedArtists'];
+
 /** Fusionne des réglages saisis avec les valeurs par défaut, en bornant chaque valeur. */
 export function normalizeSettings(raw = {}) {
   const out = { ...DEFAULT_SETTINGS };
@@ -99,5 +103,6 @@ export function normalizeSettings(raw = {}) {
       out[key] = Math.min(hi, Math.max(lo, v));
     }
   }
+  for (const key of FLAGS) if (typeof raw?.[key] === 'boolean') out[key] = raw[key];
   return out;
 }
