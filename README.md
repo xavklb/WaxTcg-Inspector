@@ -14,6 +14,10 @@ Extension Chrome **non officielle** d'aide à la décision pour le jeu de cartes
 - **Deck** : meilleur deck Face to Face de ta collection.
 - **SNEP** : singles certifiés dont la carte n'a pas encore monté.
 
+## Disponibilité
+
+L'extension sera bientôt publiée sur le **Chrome Web Store**. Ce dépôt reste public et à jour : tu peux toujours l'installer depuis les sources.
+
 ## Installation
 
 1. `chrome://extensions` → active le **Mode développeur**.
