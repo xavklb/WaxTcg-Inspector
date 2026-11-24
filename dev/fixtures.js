@@ -99,6 +99,7 @@ const MY_LISTINGS = [
   { id: 90001, trackId: '7100', price: 3400, status: 'open', expiresAt: NOW + 30 * H, closedAt: null },
   { id: 90002, trackId: '7101', price: 980, status: 'open', expiresAt: NOW + 4 * H, closedAt: null },
   { id: 90003, trackId: '7102', price: 230, status: 'open', expiresAt: NOW + 40 * H, closedAt: null },
+  { id: 90004, trackId: '7000', price: 260, status: 'open', expiresAt: NOW + 20 * H, closedAt: null, serial: 1530 }, // un de mes doublons
   { id: 89990, trackId: '1004', price: 120, status: 'sold', expiresAt: NOW - 10 * H, closedAt: NOW - 20 * H },
   { id: 89980, trackId: '1005', price: 90, status: 'cancelled', expiresAt: NOW - 30 * H, closedAt: NOW - 40 * H },
 ];
@@ -113,7 +114,7 @@ addSpec({ id: 7102, rarity: 'hit', title: 'Sans filtre', artist: 'Vega', quote: 
 const fallingHistory = [300, 310, 320, 330, 345, 480, 520, 540, 560, 600].map((price, i) => ({ at: NOW - (i + 1) * 2 * H, price }));
 
 const COLLECTION = [
-  { spec: { id: 7000, rarity: 'hit', title: 'Gravité', artist: 'Orion', quote: 240, best: 230, sellers: 2, recent: 6 }, copies: [[45, null], [812, null], [1530, null]], value: 240 },
+  { spec: { id: 7000, rarity: 'hit', title: 'Gravité', artist: 'Orion', quote: 240, best: 230, sellers: 2, recent: 6, mine: mineOf('7000') }, copies: [[45, null], [812, null], [1530, null]], value: 240 },
   { spec: { id: 7001, rarity: 'single', title: 'Coup de cœur', artist: 'Saphir', quote: 600, best: 580, recent: 8 }, copies: [[3, null]], value: 600, locked: [3] },
   { spec: { id: 7002, rarity: 'single', title: 'Sortie de nuit', artist: 'Nova', quote: 441, best: 350, sellers: 4, history: fallingHistory }, copies: [[987, null]], value: 441 },
   { spec: { id: 7003, rarity: 'or', title: 'Carrousel', artist: 'Atlas', quote: 950, best: 900, sellers: 3, recent: 5 }, copies: [[120, null], [900, null], [2210, null]], value: 950, locked: [900] },
