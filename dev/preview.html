@@ -45,6 +45,7 @@
           local: {
             get: async (key) => ({ [key]: mem[key] }),
             set: async (obj) => Object.assign(mem, obj),
+            clear: async () => Object.keys(mem).forEach((k) => delete mem[k]),
           },
         },
         // Messages de la page WAX (solde en direct) : window.__waxPush({ notes: '1 250', gems: '95' }).
