@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { demandCandidates, evaluateDemandSale } from '../extension/lib/analysis.js';
+import { demandCandidates, evaluateSale } from '../extension/lib/analysis.js';
 
 const NOW = 1_795_171_000_000;
 const t = (id, over = {}) => ({ id: String(id), title: `Titre ${id}`, artist: 'Artiste', artistId: `a${id}`, rarity: 'or', ...over });
@@ -31,6 +31,7 @@ test('cartes demandées : souhaits du Marché + annonces « Cherche », hors les
   assert.equal(c1.wishes, 300);
   assert.equal(c1.requests, 0);
   assert.equal(c1.lastCopy, true);
+  assert.equal(c1.upgradedFrom, null);
   assert.equal(c2.requests, 2);
   assert.equal(c2.posts[0].who, 'Kenzo'); // la plus récente d'abord
   assert.equal(c2.sellSerial, 5); // le n°80 est en coup de cœur
@@ -44,15 +45,15 @@ test('cartes demandées : souhaits du Marché + annonces « Cherche », hors les
 
 test('carte demandée sans vendeur : prime selon la demande', () => {
   const detail = { quote: 1000, range: { min: 750, max: 2000 }, listings: [], history: [] };
-  const base = { track: t(1), value: 1000, requests: 0 };
-  const hot = evaluateDemandSale({ ...base, wishes: 300 }, detail, NOW);
+  const base = { track: t(1), value: 1000, requests: 0, duplicates: 0, lastCopy: true };
+  const hot = evaluateSale({ ...base, wishes: 300 }, detail, NOW);
   assert.equal(hot.verdict, 'no-seller');
   assert.equal(hot.premium, 2);
   assert.equal(hot.price, 2000); // maximum autorisé
   assert.equal(hot.net, 1900);
-  assert.equal(evaluateDemandSale({ ...base, wishes: 0, requests: 2 }, detail, NOW).price, 1500);
-  assert.equal(evaluateDemandSale({ ...base, wishes: 20, requests: 0 }, detail, NOW).price, 1500);
-  assert.equal(evaluateDemandSale({ ...base, wishes: 0, requests: 1 }, detail, NOW).price, 1250);
+  assert.equal(evaluateSale({ ...base, wishes: 0, requests: 2 }, detail, NOW).price, 1500);
+  assert.equal(evaluateSale({ ...base, wishes: 20, requests: 0 }, detail, NOW).price, 1500);
+  assert.equal(evaluateSale({ ...base, wishes: 0, requests: 1 }, detail, NOW).price, 1250);
 });
 
 test('carte demandée déjà en vente : juste sous le moins cher des autres', () => {
@@ -62,8 +63,9 @@ test('carte demandée déjà en vente : juste sous le moins cher des autres', ()
     listings: [{ id: 1, price: 1400, mine: false }, { id: 2, price: 900, mine: true }],
     history: [],
   };
-  const r = evaluateDemandSale({ track: t(1), value: 1000, wishes: 50, requests: 1 }, detail, NOW);
-  assert.equal(r.verdict, 'compete');
+  const r = evaluateSale({ track: t(1), value: 1000, wishes: 50, requests: 1, duplicates: 0 }, detail, NOW);
+  assert.equal(r.verdict, 'sell');
+  assert.equal(r.wanted, true);
   assert.equal(r.price, 1399);
   assert.equal(r.competitors, 1);
   assert.equal(r.premium, null);
@@ -71,5 +73,8 @@ test('carte demandée déjà en vente : juste sous le moins cher des autres', ()
 
 test('carte demandée : jamais sous le prix plancher autorisé', () => {
   const detail = { quote: 1000, range: { min: 750, max: 2000 }, listings: [{ id: 1, price: 750, mine: false }], history: [] };
-  assert.equal(evaluateDemandSale({ track: t(1), value: 1000, wishes: 0, requests: 1 }, detail, NOW).price, 750);
+  const r = evaluateSale({ track: t(1), value: 1000, wishes: 0, requests: 1, duplicates: 0 }, detail, NOW);
+  assert.equal(r.price, 750);
+  assert.equal(r.cantBeat, true);
+  assert.equal(r.ahead, 1); // l'autre annonce au plancher passe avant
 });
