@@ -45,6 +45,13 @@ const store = {
       // stockage indisponible : on garde l'état en mémoire
     }
   },
+  async clear() {
+    try {
+      await chrome.storage.local.clear();
+    } catch {
+      // stockage indisponible : rien à effacer
+    }
+  },
 };
 
 // ------------------------------------------------------------------ DOM
@@ -814,7 +821,7 @@ function settingsView() {
     ),
   );
   state.saved = false;
-  return [form, announceSettingsView()];
+  return [form, announceSettingsView(), dataView()];
 }
 
 const ANNOUNCE_FIELDS = [
@@ -878,6 +885,44 @@ function announceSettingsView() {
   state.announceSaved = false;
   refresh();
   return form;
+}
+
+/** Tout ce que l'extension garde est dans le navigateur ; un bouton l'efface. */
+function dataView() {
+  const done = state.dataCleared;
+  state.dataCleared = false;
+  return h(
+    'section',
+    { class: 'settings' },
+    h('h2', { class: 'section' }, 'Mes données'),
+    h(
+      'p',
+      { class: 'lead' },
+      'Tout reste dans ce navigateur : tes réglages, tes dernières analyses et les fans des artistes (relus une fois par jour). L’extension n’envoie rien ailleurs.',
+    ),
+    h(
+      'div',
+      { class: 'actions' },
+      h(
+        'button',
+        {
+          class: 'btn',
+          type: 'button',
+          onclick: async () => {
+            if (!window.confirm('Effacer tes réglages et tes analyses enregistrées ?')) return;
+            await store.clear();
+            state.settings = { ...DEFAULT_SETTINGS };
+            state.announce = { ...DEFAULT_ANNOUNCE };
+            state.results = {};
+            state.dataCleared = true;
+            render();
+          },
+        },
+        'Effacer les données de l’extension',
+      ),
+      done ? h('span', { class: 'progress' }, 'Données effacées.') : null,
+    ),
+  );
 }
 
 function runView(tab) {
