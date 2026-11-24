@@ -32,6 +32,6 @@ npm run package      # paquet Chrome Web Store dans dist/
 
 ## ⚠ Avertissement
 
-Les règles de WAX interdisent les scripts. L'extension ne clique jamais mais lit l'API avec ta session : utilise-la avec modération, à tes risques.
+Les règles de WAX interdisent les scripts. L'extension ne clique jamais mais lit l'API avec ta session : possibilité de bannissement !!!.
 
 Confidentialité : [PRIVACY.md](PRIVACY.md) · Publication : [store/README.md](store/README.md)
