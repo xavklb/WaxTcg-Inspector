@@ -29,9 +29,9 @@ L'extension sera bientôt publiée sur le **Chrome Web Store**. Ce dépôt reste
 Node 20+, aucune dépendance.
 
 ```bash
-npm test             # tests
+npm test
 npm run preview      # aperçu sur http://127.0.0.1:5178
-npm run package      # paquet Chrome Web Store dans dist/
+npm run package
 ```
 
 ## ⚠ Avertissement
