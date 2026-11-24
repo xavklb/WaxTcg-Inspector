@@ -1,6 +1,6 @@
 # Analyse de WAX (waxtcg.com) — 20/11/2026
 
-Analyse faite depuis le compte de l'utilisateur via l'extension Claude in Chrome : lecture de l'interface, du guide officiel, du code JavaScript du site et de l'API JSON (requêtes **GET uniquement**, aucune action de jeu effectuée).
+Analyse faite depuis le compte de l'utilisateur : lecture de l'interface, du guide officiel, du code JavaScript du site et de l'API JSON (requêtes **GET uniquement**, aucune action de jeu effectuée).
 
 ---
 
