@@ -93,7 +93,7 @@ async function openCard(id) {
   }
 }
 
-function card(track, body, badges = []) {
+function card(track, body, badges = [], { rank = null } = {}) {
   const rar = RARITY[track?.rarity] ?? { label: track?.rarity ?? '?', color: '#888' };
   return h(
     'article',
@@ -101,6 +101,7 @@ function card(track, body, badges = []) {
     h(
       'header',
       { class: 'card-head' },
+      rank != null ? h('span', { class: `rank num${rank <= 3 ? ' top' : ''}`, title: 'Ordre conseillé', 'aria-label': `Vente conseillée n° ${rank}` }, rank) : null,
       h('span', { class: 'chip' }, rar.label),
       h('div', { class: 'titles' }, h('strong', { title: track?.title }, track?.title ?? '?'), h('span', { class: 'artist' }, track?.artist ?? '')),
       h('button', { class: 'btn small', title: 'Ouvrir la fiche de la carte sur WAX', onclick: () => openCard(track.id) }, 'Ouvrir'),
@@ -196,109 +197,199 @@ function listingCard(r) {
   );
 }
 
-function saleCard(r) {
+const plural = (n, one, many) => (n > 1 ? many : one);
+
+function saleAdvice(r) {
+  switch (r.verdict) {
+    case 'recycle':
+      return `La vente rapporterait ${notes(r.net)}, pas plus que le recyclage (${notes(r.recycle)}) : recycle-la plutôt.`;
+    case 'no-seller':
+      return `Personne n’en vend : mets-la à ${notes(r.price)} (${r.premium === 2 ? 'le maximum autorisé, 2× la cote' : `${String(r.premium).replace('.', ',')}× la cote`}), tu toucheras ${notes(r.net)}.`;
+    case 'illiquid':
+      return `Aucune vente sur 7 jours : mets-la à ${notes(r.price)} et sois patient, ou garde-la.`;
+    default: {
+      let lead;
+      if (r.cheapestOther == null) lead = `Personne d’autre n’en vend : mets-la au prix des dernières ventes, ${notes(r.price)}.`;
+      else if (r.cantBeat) lead = `Un autre vendeur est déjà au prix plancher (${notes(r.cheapestOther)}) : tu passeras après lui.`;
+      else if (r.price === r.cheapestOther - 1) lead = `Passe juste devant le moins cher (${notes(r.cheapestOther)}) à ${notes(r.price)}.`;
+      else lead = `Au prix des dernières ventes, ${notes(r.price)}, tu es le moins cher.`;
+      const falling = r.verdict === 'sell-fast' ? ` Les prix baissent (${pct(r.stats.momentum)} sur les dernières ventes) : vends tout de suite.` : '';
+      const wait = r.fairPrice > r.price && !r.falling ? ' Si tu peux attendre, le prix cote rapporte plus.' : '';
+      return lead + falling + wait;
+    }
+  }
+}
+
+/** Gain qui classe la carte : ce que la vente rapporte (de plus que le recyclage pour un doublon) et ses chances. */
+function gainLine(r) {
+  const text = r.duplicates > 0 ? `+${notes(r.gain)} de plus qu’au recyclage` : `+${notes(r.net)} net`;
+  return h('div', { class: 'profit num' }, text, h('span', { class: 'muted' }, ` · ~${Math.round(r.chance * 100)} % de chances sous 3 j`));
+}
+
+function saleCard(r, rank = null) {
   const verdicts = {
-    recycle: [badge('Recycler', 'warn'), `La vente rapporterait moins que le recyclage (${notes(r.recycle)}).`],
-    illiquid: [badge('Peu demandée', 'warn'), 'Aucune vente sur 7 jours : mets-la au prix cote et sois patient.'],
-    'sell-fast': [badge('Vendre vite', 'bad'), `Les prix baissent (${pct(r.stats.momentum)} sur les dernières ventes) : vends au prix rapide.`],
-    sell: [badge('Vendre', 'good'), 'Prix rapide pour partir vite, prix cote pour gagner plus.'],
+    recycle: badge('Recycler', 'warn'),
+    'no-seller': badge('Personne n’en vend', 'good'),
+    illiquid: badge('Peu demandée', 'warn'),
+    'sell-fast': badge('Vendre vite', 'bad'),
+    sell: badge('Vendre', 'good'),
   };
-  const [verdictBadge, advice] = verdicts[r.verdict];
   const otherFavorites = (r.favoriteSerials ?? []).filter((s) => s !== r.sellSerial);
   const badges = [
-    verdictBadge,
+    verdicts[r.verdict] ?? verdicts.sell,
     r.sellIsFavorite ? badge('❤ Coup de cœur', 'bad') : null,
     r.protectedArtist ? badge('🛡 Artiste protégé', 'bad') : null,
-    r.duplicates > 0 ? badge(`doublon ×${r.duplicates}`) : badge(`hype ×${r.ratio.toFixed(1)}`),
+    r.wanted && r.verdict !== 'no-seller' ? badge('Demandée', 'good') : null,
+    r.falling && r.verdict !== 'sell-fast' ? badge('Prix en baisse', 'warn') : null,
+    r.duplicates > 0 ? badge(`doublon ×${r.duplicates}`) : r.reason === 'hype' ? badge(`hype ×${r.ratio.toFixed(1).replace('.', ',')}`) : null,
     badge(`vends le n°${r.sellSerial}`),
     !r.sellIsFavorite && otherFavorites.length ? badge(`❤ n°${otherFavorites.join(', ')} en coup de cœur`) : null,
     r.upgradedFrom ? badge(`montée (tirée en ${RARITY[r.upgradedFrom]?.label ?? r.upgradedFrom})`, 'good') : null,
-  ].filter(Boolean);
-  return card(
-    r.track,
-    [
-      row('Prix rapide', notes(r.fastPrice), `tu touches ${notes(r.fastNet)}`),
-      row('Prix cote', notes(r.fairPrice), `tu touches ${notes(r.fairNet)}`),
-      meta([
-        ...salesMeta(r.stats),
-        r.cheapestOther != null ? `moins cher en vente ${fmt(r.cheapestOther)}` : 'personne d’autre en vente',
-        r.duplicates > 0 ? `recyclage ${fmt(r.recycle)}` : null,
-      ]),
-      h('p', { class: 'advice' }, advice),
-      r.sellIsFavorite
-        ? h('p', { class: 'reasons' }, `Le n°${r.sellSerial} est en coup de cœur : retire le cœur sur la carte avant de la mettre en vente.`)
-        : null,
-      r.protectedArtist ? h('p', { class: 'reasons' }, `Tu as protégé ${r.track.artist || 'cet artiste'} : vérifie que tu veux vraiment vendre.`) : null,
-      r.lastCopy ? h('p', { class: 'reasons' }, `Dernier exemplaire : ta valeur de collection baissera d’environ ${notes(r.value)}.`) : null,
-    ],
-    badges,
-  );
-}
-
-function demandCard(r) {
-  const plural = (n, one, many) => (n > 1 ? many : one);
-  const advice =
-    r.verdict === 'no-seller'
-      ? `Personne n’en vend : mets-la à ${notes(r.price)} (${r.premium === 2 ? 'le maximum autorisé, 2× la cote' : `${String(r.premium).replace('.', ',')}× la cote`}), tu toucheras ${notes(r.net)}.`
-      : `${r.competitors} autre${plural(r.competitors, '', 's')} en vente dès ${notes(r.cheapestOther)} : passe juste devant à ${notes(r.price)} (tu toucheras ${notes(r.net)}).`;
-  const badges = [
-    r.verdict === 'no-seller' ? badge('Personne n’en vend', 'good') : badge('Demandée', 'good'),
-    r.sellIsFavorite ? badge('❤ Coup de cœur', 'bad') : null,
-    r.protectedArtist ? badge('🛡 Artiste protégé', 'bad') : null,
-    badge(`vends le n°${r.sellSerial}`),
-    r.owned > 1 ? badge(`${r.owned} exemplaires`) : null,
-    !r.sellIsFavorite && r.favoriteSerials?.length ? badge(`❤ n°${r.favoriteSerials.join(', ')} en coup de cœur`) : null,
+    r.listedByMe ? badge(`déjà ${r.listedByMe} en vente`, 'warn') : null,
   ].filter(Boolean);
   return card(
     r.track,
     [
       row('Prix conseillé', notes(r.price), `tu touches ${notes(r.net)}`),
-      row('Prix cote', notes(r.fairPrice), `tu touches ${notes(r.fairNet)}`),
+      r.fairPrice !== r.price ? row('Prix cote', notes(r.fairPrice), `tu touches ${notes(r.fairNet)}`) : null,
+      r.verdict === 'recycle' ? null : gainLine(r),
       meta([
         r.wishes ? `${fmt(r.wishes)} joueur${plural(r.wishes, '', 's')} la souhaite${plural(r.wishes, '', 'nt')}` : null,
         r.requests ? `${r.requests} annonce${plural(r.requests, '', 's')} « Cherche »` : null,
         ...salesMeta(r.stats),
+        r.cheapestOther != null ? `moins cher en vente ${fmt(r.cheapestOther)}` : 'personne d’autre en vente',
+        r.duplicates > 0 ? `recyclage ${fmt(r.recycle)}` : null,
       ]),
-      r.posts.slice(0, 3).map((p) =>
+      (r.posts ?? []).slice(0, 3).map((p) =>
         h('p', { class: 'quote-post' }, h('b', null, p.who || 'Un joueur'), ' cherche cette carte', p.at ? ` (${ago(p.at)})` : '', p.note ? ` : « ${p.note} »` : ''),
       ),
-      h('p', { class: 'advice' }, advice, r.requests ? ` Tu peux aussi ${r.requests > 1 ? 'leur' : 'lui'} proposer un échange depuis WAX FM.` : ''),
-      r.sellIsFavorite ? h('p', { class: 'reasons' }, `Le n°${r.sellSerial} est en coup de cœur : retire le cœur avant de la vendre.`) : null,
+      h('p', { class: 'advice' }, saleAdvice(r), r.requests ? ` Tu peux aussi ${r.requests > 1 ? 'leur' : 'lui'} proposer un échange depuis WAX FM.` : ''),
+      r.sellIsFavorite
+        ? h('p', { class: 'reasons' }, `Le n°${r.sellSerial} est en coup de cœur : retire le cœur sur la carte avant de la mettre en vente.`)
+        : null,
       r.protectedArtist ? h('p', { class: 'reasons' }, `Tu as protégé ${r.track.artist || 'cet artiste'} : vérifie que tu veux vraiment vendre.`) : null,
       r.lastCopy ? h('p', { class: 'reasons' }, `Dernier exemplaire : ta valeur de collection baissera d’environ ${notes(r.value ?? r.quote)}.`) : null,
+      r.listedByMe ? h('p', { class: 'reasons' }, `Tu as déjà ${r.listedByMe} annonce${plural(r.listedByMe, '', 's')} sur ce titre (voir Mes annonces).`) : null,
     ],
     badges,
+    { rank },
   );
 }
 
-function demandSection(res) {
-  if (!res.demand) return null; // analyse enregistrée avant l'ajout de cette section
-  const others = res.demandOthers ?? [];
+/** Coups de cœur et artistes protégés : proposés ou non à la vente (réglage enregistré). */
+const LIKED_OPTIONS = [
+  {
+    key: 'sellFavorites',
+    short: 'mes coups de cœur ❤',
+    label: 'Proposer mes titres coup de cœur ❤',
+    hint: 'Décoché : une carte dont le numéro à vendre a un cœur n’est jamais proposée. Un doublon sans cœur du même titre peut l’être.',
+  },
+  {
+    key: 'sellProtectedArtists',
+    short: 'mes artistes protégés 🛡',
+    label: 'Proposer les titres de mes artistes protégés 🛡',
+    hint: 'Décoché : aucun titre de ces artistes n’est proposé à la vente.',
+  },
+];
+
+function sellOptions() {
+  return h(
+    'div',
+    { class: 'options', role: 'group', 'aria-label': 'Cartes à me proposer à la vente' },
+    h('span', { class: 'muted' }, 'Me proposer aussi :'),
+    LIKED_OPTIONS.map((o) => {
+      const id = `opt-${o.key}`;
+      return h(
+        'label',
+        { class: 'check', for: id, title: o.hint },
+        h('input', {
+          type: 'checkbox',
+          id,
+          checked: state.settings[o.key],
+          onchange: async (e) => {
+            state.settings = normalizeSettings({ ...state.settings, [o.key]: e.target.checked });
+            await store.set('settings', state.settings);
+            render();
+            document.getElementById(id)?.focus();
+          },
+        }),
+        o.short,
+      );
+    }),
+  );
+}
+
+/** Cartes que mes réglages ne veulent pas voir proposées (y compris celles écartées avant l'analyse). */
+function likedNote(res) {
+  const s = state.settings;
+  const liked = res.liked ?? { favorites: 0, protectedArtists: 0 };
+  const parts = [];
+  if (!s.sellFavorites && liked.favorites) parts.push(`${liked.favorites} carte${plural(liked.favorites, '', 's')} en coup de cœur ❤`);
+  if (!s.sellProtectedArtists && liked.protectedArtists) {
+    parts.push(`${liked.protectedArtists} carte${plural(liked.protectedArtists, '', 's')} de tes artistes protégés 🛡`);
+  }
+  const rerun =
+    (s.sellFavorites && res.options?.sellFavorites === false && liked.favorites > 0) ||
+    (s.sellProtectedArtists && res.options?.sellProtectedArtists === false && liked.protectedArtists > 0);
+  if (!parts.length && !rerun) return null;
+  return h(
+    'p',
+    { class: 'lead' },
+    parts.length ? `Pas proposées, comme tu l’as choisi : ${parts.join(' et ')}.` : '',
+    rerun ? `${parts.length ? ' ' : ''}Relance l’analyse pour voir les cartes que tu viens d’autoriser.` : '',
+  );
+}
+
+function toSellSection(res) {
+  if (!res.toSell) {
+    return h('p', { class: 'empty' }, 'Relance l’analyse : les ventes sont maintenant classées de la plus intéressante à la moins intéressante.');
+  }
+  const s = state.settings;
+  const hidden = (r) => (!s.sellFavorites && r.sellIsFavorite) || (!s.sellProtectedArtists && r.protectedArtist);
+  const visible = res.toSell.filter((r) => !hidden(r));
+  const sell = visible.filter((r) => r.verdict !== 'recycle');
+  const recycle = visible.filter((r) => r.verdict === 'recycle');
+  const free = Math.max(0, res.maxOpen - res.openCount);
   return [
-    h('h2', { class: 'section' }, `Cartes demandées que tu as (${res.demand.length}${res.demandCount > res.demand.length ? ` sur ${res.demandCount}` : ''})`),
-    res.demand.length
-      ? res.demand.map(demandCard)
-      : h('p', { class: 'empty' }, `Aucune de tes cartes n’est parmi les plus souhaitées ni cherchée sur WAX FM en ce moment (${res.wantPosts ?? 0} annonces « Cherche » lues).`),
-    others.length
+    h('h2', { class: 'section' }, `À vendre en priorité (${sell.length})`),
+    sell.length
       ? h(
-          'details',
-          { class: 'rejected' },
-          h('summary', null, `Les plus souhaitées du Marché, que tu n’as pas (${others.length})`),
-          h(
-            'div',
-            { class: 'sheet' },
-            others.map((o) =>
-              h(
-                'div',
-                { class: 'row' },
-                h('span', { class: 'k' }, `${o.track.title} – ${o.track.artist}`),
-                h('span', { class: 'v num' }, `${fmt(o.wishes)} souhaits · ${o.marketBest != null ? `dès ${notes(o.marketBest)}` : 'aucune en vente'}`),
-              ),
-            ),
-          ),
+          'p',
+          { class: 'lead' },
+          free > 0
+            ? `Il te reste ${free} place${plural(free, '', 's')} d’annonce sur ${res.maxOpen} : commence par le haut de la liste.`
+            : `Tes ${res.maxOpen} places d’annonce sont prises : attends une vente, ou retire une annonce qui rapporte moins que le haut de cette liste.`,
+          res.candidates > res.checked ? ` Les ${res.checked} cartes les plus prometteuses sur ${res.candidates} ont été vérifiées.` : '',
         )
       : null,
+    likedNote(res),
+    sell.length
+      ? sell.map((r, i) => saleCard(r, i + 1))
+      : h('p', { class: 'empty' }, 'Ni doublon, ni carte en pleine hype, ni carte demandée à vendre dans ta collection.'),
+    recycle.length ? h('details', { class: 'rejected' }, h('summary', null, `Mieux vaut recycler (${recycle.length})`), recycle.map((r) => saleCard(r))) : null,
   ];
+}
+
+function othersWanted(res) {
+  const others = res.demandOthers ?? [];
+  if (!others.length) return null;
+  return h(
+    'details',
+    { class: 'rejected' },
+    h('summary', null, `Les plus souhaitées du Marché, que tu n’as pas (${others.length})`),
+    h(
+      'div',
+      { class: 'sheet' },
+      others.map((o) =>
+        h(
+          'div',
+          { class: 'row' },
+          h('span', { class: 'k' }, `${o.track.title} – ${o.track.artist}`),
+          h('span', { class: 'v num' }, `${fmt(o.wishes)} souhaits · ${o.marketBest != null ? `dès ${notes(o.marketBest)}` : 'aucune en vente'}`),
+        ),
+      ),
+    ),
+  );
 }
 
 async function copyText(text, textarea) {
@@ -415,15 +506,13 @@ function renderSell(res) {
       `Annonces ${res.openCount}/${res.maxOpen}`,
       res.collectionValue != null ? `Collection ${fmt(res.collectionValue)}` : null,
       res.rank != null ? `Rang ${fmt(res.rank)} / ${fmt(res.players)}` : null,
+      res.wantPosts != null ? `${res.wantPosts} annonce${plural(res.wantPosts, '', 's')} « Cherche » sur WAX FM` : null,
     ].filter(Boolean).map((t) => h('span', null, t))),
-    demandSection(res),
+    toSellSection(res),
     h('h2', { class: 'section' }, `Mes annonces (${res.listings.length})`),
     res.listings.length ? res.listings.map(listingCard) : h('p', { class: 'empty' }, 'Aucune annonce en cours.'),
     announcePanel(res),
-    h('h2', { class: 'section' }, `À mettre en vente (${res.sales.length}${res.candidates > res.checked ? ` sur ${res.candidates}` : ''})`),
-    res.sales.length
-      ? res.sales.map(saleCard)
-      : h('p', { class: 'empty' }, 'Ni doublon, ni carte en pleine hype dans ta collection.'),
+    othersWanted(res),
   ];
 }
 
@@ -642,7 +731,9 @@ const VIEWS = {
   },
   sell: {
     label: 'Vendre',
-    intro: 'Tes cartes que d’autres joueurs cherchent, tes annonces dépassées ou trop basses, puis tes doublons et tes cartes en pleine hype à vendre.',
+    intro:
+      'Tes cartes à vendre, de la plus intéressante à la moins intéressante : ce que la vente rapporte, ses chances de partir sous 3 jours et la demande des joueurs. Puis tes annonces dépassées ou trop basses.',
+    controls: sellOptions,
     run: runSell,
     render: renderSell,
   },
@@ -673,6 +764,7 @@ const FIELDS = [
 
 function settingsView() {
   const inputs = {};
+  const checks = {};
   const form = h(
     'form',
     {
@@ -684,7 +776,8 @@ function settingsView() {
           const v = inputs[f.key].value;
           raw[f.key] = f.percent && v !== '' ? Number(v) / 100 : v;
         }
-        state.settings = normalizeSettings(raw);
+        for (const o of LIKED_OPTIONS) raw[o.key] = checks[o.key].checked;
+        state.settings = normalizeSettings({ ...state.settings, ...raw });
         await store.set('settings', state.settings);
         state.saved = true;
         render();
@@ -694,6 +787,11 @@ function settingsView() {
       const value = f.percent ? Math.round(state.settings[f.key] * 100) : state.settings[f.key];
       inputs[f.key] = h('input', { id: `f-${f.key}`, type: 'number', step: f.step, min: 0, value });
       return h('div', { class: 'field' }, h('label', { for: `f-${f.key}` }, f.label), f.hint ? h('span', { class: 'hint' }, f.hint) : null, inputs[f.key]);
+    }),
+    h('h2', { class: 'section' }, 'Vendre'),
+    LIKED_OPTIONS.map((o) => {
+      checks[o.key] = h('input', { id: `s-${o.key}`, type: 'checkbox', checked: state.settings[o.key] });
+      return h('div', { class: 'field' }, h('label', { class: 'check', for: `s-${o.key}` }, checks[o.key], o.label), h('span', { class: 'hint' }, o.hint));
     }),
     h(
       'div',
@@ -788,6 +886,7 @@ function runView(tab) {
   const running = state.running === tab;
   return [
     h('p', { class: 'intro' }, view.intro),
+    view.controls ? view.controls() : null,
     h(
       'div',
       { class: 'actions' },

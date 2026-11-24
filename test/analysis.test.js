@@ -239,9 +239,10 @@ test('vente d’un doublon : recycler si la vente rapporte moins', () => {
   const cand = { track: track(1, 'or'), value: 210, duplicates: 1, lastCopy: false };
   const detail = { quote: 210, range: { min: 200, max: 420 }, listings: [{ id: 1, price: 200, mine: false }], history: sales([2, 205], [5, 200], [9, 210]) };
   const r = evaluateSale(cand, detail, NOW);
-  assert.equal(r.fastPrice, 200);
-  assert.equal(r.fastNet, 190);
-  assert.equal(r.verdict, 'sell'); // 190 > recyclage Or (100)
+  assert.equal(r.price, 200);
+  assert.equal(r.net, 190);
+  assert.equal(r.gain, 90); // 190 − recyclage Or (100)
+  assert.equal(r.verdict, 'sell');
 
   // Cas limite (fourchette artificiellement basse) : 5 ♫ de vente → 4 net, sous le recyclage Découverte (5).
   const cheap = evaluateSale(
@@ -249,8 +250,9 @@ test('vente d’un doublon : recycler si la vente rapporte moins', () => {
     { quote: 6, range: { min: 5, max: 12 }, listings: [{ id: 1, price: 5, mine: false }], history: sales([1, 6]) },
     NOW,
   );
-  assert.equal(cheap.fastNet, 4);
+  assert.equal(cheap.net, 4);
   assert.equal(cheap.verdict, 'recycle');
+  assert.equal(cheap.score, 0);
 });
 
 test('vente : cote qui baisse → vendre vite', () => {
@@ -258,7 +260,9 @@ test('vente : cote qui baisse → vendre vite', () => {
   const history = sales([1, 300], [2, 310], [3, 320], [4, 330], [5, 340], [6, 500], [7, 520], [8, 540], [9, 560], [10, 580]);
   const r = evaluateSale(cand, { quote: 441, range: { min: 330, max: 800 }, listings: [{ id: 1, price: 350, mine: false }], history }, NOW);
   assert.equal(r.verdict, 'sell-fast');
+  assert.equal(r.falling, true);
   assert.equal(r.fairPrice, 330); // médiane 320 ramenée au plancher
+  assert.equal(r.price, 330); // sous le moins cher des autres (350)
 });
 
 test('réglages : bornes et valeurs par défaut', () => {
@@ -268,4 +272,12 @@ test('réglages : bornes et valeurs par défaut', () => {
   assert.equal(s.minRoi, 0.2);
   assert.equal(s.budget, DEFAULT_SETTINGS.budget);
   assert.deepEqual(normalizeSettings(undefined), { ...DEFAULT_SETTINGS });
+});
+
+test('réglages : coups de cœur et artistes protégés proposés ou non', () => {
+  assert.equal(DEFAULT_SETTINGS.sellFavorites, true);
+  assert.equal(DEFAULT_SETTINGS.sellProtectedArtists, true);
+  const s = normalizeSettings({ sellFavorites: false, sellProtectedArtists: 'non' });
+  assert.equal(s.sellFavorites, false);
+  assert.equal(s.sellProtectedArtists, true); // valeur invalide : défaut
 });

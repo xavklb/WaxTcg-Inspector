@@ -240,6 +240,26 @@ h2.section {
   font-size: 12px;
 }
 
+.rank {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-top: -1px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.rank.top {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #160b16;
+}
+
 .chip {
   flex: none;
   margin-top: 1px;
@@ -390,6 +410,22 @@ details.rejected .card {
   font-size: 12px;
 }
 
+/* Vendre : options et ordre conseillé */
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+.lead {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* Cartes demandées */
 .quote-post {
   margin: 6px 0 0;
@@ -458,6 +494,17 @@ details.rejected .card {
 .field label {
   display: block;
   font-weight: 600;
+}
+
+.field .check {
+  display: flex;
+  align-items: flex-start;
+}
+
+.field .check input {
+  width: auto;
+  margin: 3px 0 0;
+  padding: 0;
 }
 
 .field .hint {
