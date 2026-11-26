@@ -2,6 +2,7 @@ import { WaxApi } from './lib/api.js';
 import { runAuctions, runBuy, runDeck, runSell, runSnep } from './lib/runs.js';
 import { strengths } from './lib/deck.js';
 import { parseWallet } from './lib/wallet.js';
+import { PREFILL_HOURS, prefillBlocker, prefillPlan } from './lib/prefill.js';
 import {
   ANNOUNCE_PLACEHOLDERS,
   CHAT_MAX_LENGTH,
@@ -27,6 +28,7 @@ const state = {
   progress: '',
   error: null,
   requests: 0,
+  prefill: { busy: false, message: null, error: null },
 };
 
 // ------------------------------------------------------------------ stockage
@@ -348,6 +350,57 @@ function likedNote(res) {
   );
 }
 
+/** Bouton qui coche les meilleures ventes dans la fenêtre « Vendre / Enchères » du site et remplit leurs prix. */
+function prefillPanel(sell, free) {
+  const items = prefillPlan(sell, free);
+  const skipped = sell.slice(0, free).filter((r) => prefillBlocker(r)).length;
+  const p = state.prefill;
+  const run = async () => {
+    state.prefill = { busy: true, message: null, error: null };
+    render();
+    try {
+      const res = await api.prefillSell(items, PREFILL_HOURS);
+      const miss = res.missing?.length ?? 0;
+      state.prefill = {
+        busy: false,
+        error: null,
+        message:
+          `${res.filled} carte${plural(res.filled, '', 's')} prête${plural(res.filled, '', 's')} sur WAX avec le prix conseillé. ` +
+          (miss ? `${miss} introuvable${plural(miss, '', 's')} dans la fenêtre du site. ` : '') +
+          (res.noRoom?.length ? `${res.noRoom.length} de plus que tes places d’annonce libres sur WAX. ` : '') +
+          'Vérifie les prix, puis clique toi-même sur « Tout mettre en vente ».',
+      };
+    } catch (e) {
+      state.prefill = { busy: false, message: null, error: e?.message ?? String(e) };
+    }
+    render();
+  };
+  return h(
+    'div',
+    { class: 'prefill' },
+    h(
+      'button',
+      {
+        class: 'btn primary',
+        disabled: p.busy || !items.length || Boolean(state.running),
+        title: 'Coche ces cartes dans « Vendre / Enchères » sur WAX et remplit leurs prix. La mise en vente reste à toi.',
+        onclick: run,
+      },
+      p.busy ? 'Préremplissage…' : `Préremplir les ${items.length} meilleure${plural(items.length, '', 's')} sur WAX`,
+    ),
+    h(
+      'p',
+      { class: 'note' },
+      `Ouvre la vente groupée du Marché, coche ces cartes et remplit leurs prix (vente ${PREFILL_HOURS} h). Rien n’est mis en vente : tu vérifies et tu cliques sur « Tout mettre en vente ».`,
+      skipped
+        ? ` ${skipped} carte${plural(skipped, '', 's')} du haut de la liste ${plural(skipped, 'reste', 'restent')} à vendre depuis ${plural(skipped, 'sa', 'leur')} fiche (dernier exemplaire, coup de cœur ou déjà en vente).`
+        : '',
+    ),
+    p.message ? h('p', { class: 'lead' }, p.message) : null,
+    p.error ? h('p', { class: 'error' }, p.error) : null,
+  );
+}
+
 function toSellSection(res) {
   if (!res.toSell) {
     return h('p', { class: 'empty' }, 'Relance l’analyse : les ventes sont maintenant classées de la plus intéressante à la moins intéressante.');
@@ -371,6 +424,7 @@ function toSellSection(res) {
         )
       : null,
     likedNote(res),
+    sell.length && free > 0 ? prefillPanel(sell, free) : null,
     sell.length
       ? sell.map((r, i) => saleCard(r, i + 1))
       : h('p', { class: 'empty' }, 'Ni doublon, ni carte en pleine hype, ni carte demandée à vendre dans ta collection.'),
@@ -999,7 +1053,7 @@ function footer() {
   return h(
     'footer',
     { class: 'foot' },
-    `Lecture seule : l’extension ne peut ni acheter ni vendre. ${state.requests} requête${state.requests > 1 ? 's' : ''} depuis l’ouverture du panneau. `,
+    `L’extension n’achète et ne vend jamais à ta place. ${state.requests} requête${state.requests > 1 ? 's' : ''} depuis l’ouverture du panneau. `,
     'Les règles de WAX interdisent les scripts : analyse avec modération.',
   );
 }

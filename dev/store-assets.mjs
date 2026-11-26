@@ -90,7 +90,7 @@ function shotHtml(shot, { icon, panelUrl }) {
       <div class="brand">${icon}<span>WAX Inspector</span></div>
       <h1 style="margin:0;font-size:54px;line-height:1.08;letter-spacing:-.02em;font-weight:800">${shot.title}</h1>
       <p style="margin:0;font-size:23px;line-height:1.45;color:#b3b3b3">${shot.text}</p>
-      <div><span class="tag" style="font-size:17px">Extension non officielle · lecture seule : elle ne joue jamais à ta place</span></div>
+      <div><span class="tag" style="font-size:17px">Extension non officielle · elle n’achète et ne vend jamais à ta place</span></div>
     </div>
     <iframe src="${panelUrl}" style="position:absolute;right:96px;top:40px;width:402px;height:720px;border:0;border-radius:12px;background:#121212;box-shadow:0 24px 64px rgba(0,0,0,.6)"></iframe>`,
     { width: 1280, height: 800 },

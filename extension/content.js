@@ -1,7 +1,7 @@
 // WAX Inspector : pont en lecture seule entre le panneau latéral et l'API de waxtcg.com.
 //
 // Seules des requêtes GET vers une liste fermée de routes de consultation passent.
-// L'extension ne peut donc ni acheter, ni vendre, ni enchérir, ni ouvrir de booster.
+// Ce script ne peut donc ni acheter, ni vendre, ni enchérir, ni ouvrir de booster (la vente groupée est préparée par prefill.js).
 (() => {
   const ALLOWED = [
     /^\/api\/game$/,
