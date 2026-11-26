@@ -7,7 +7,7 @@ Tout ce qu'il faut pour remplir le [tableau de bord du Chrome Web Store](https:/
 - **Compte développeur** : frais d'inscription unique de 5 $, validation en deux étapes du compte Google, et une adresse e-mail de contact vérifiée. Elle sera visible sur la fiche.
 - **Politique de confidentialité** : [`PRIVACY.md`](../PRIVACY.md) doit être publiée à une adresse **publique**. Le dépôt GitHub étant privé, son lien ne marchera pas. Le plus simple : un Gist GitHub public (gist.github.com) avec le contenu du fichier, ou un document Google « Publié sur le Web ». Note l'adresse obtenue.
 - **Deux risques à peser** :
-  - Les règles de WAX interdisent les scripts. L'extension ne clique jamais, mais elle lit l'API avec la session du joueur. La publier la rend visible des créateurs du jeu, et ton propre compte est lié à la fiche.
+  - Les règles de WAX interdisent les scripts. L'extension lit l'API avec la session du joueur, et le bouton « Préremplir sur WAX » remplit la fenêtre de vente du site (sans la valider). La publier la rend visible des créateurs du jeu, et ton propre compte est lié à la fiche.
   - Le nom « WAX » appartient au jeu. La fiche dit clairement que l'extension est **non officielle**, mais Google peut la refuser pour usage de marque. Une autorisation des créateurs de WAX supprimerait ce risque.
 
   La visibilité **Non répertoriée** (voir plus bas) limite les deux risques : seules les personnes qui ont le lien la trouvent.
@@ -49,12 +49,12 @@ WAX Inspector t'aide à prendre de meilleures décisions au Marché du jeu de ca
 Extension non officielle, sans lien avec les créateurs de WAX.
 
 C'EST TOI QUI JOUES
-L'extension est en lecture seule : elle n'achète pas, ne vend pas, n'enchérit pas et ne clique jamais à ta place. Quand tu cliques sur « Analyser », elle lit les données du jeu et affiche ses conseils dans un panneau latéral, à côté du site. Tu passes tes ordres toi-même.
+L'extension n'achète pas, ne vend pas et n'enchérit pas à ta place. Quand tu cliques sur « Analyser », elle lit les données du jeu et affiche ses conseils dans un panneau latéral, à côté du site. Si tu le demandes, elle prépare la vente groupée du site avec ses prix conseillés : c'est toi qui vérifies et confirmes.
 
 CE QU'ELLE FAIT
 • Acheter : les titres en vente sous leur prix de revente réaliste, vérifiés sur les ventes récentes, avec le prix d'achat maximum et le gain net après la taxe de 5 %.
 • Enchères : les enchères Or et plus qui se terminent bientôt sous leur valeur, avec la mise à ne pas dépasser.
-• Vendre : tes doublons, tes cartes en pleine hype et les cartes que d'autres joueurs cherchent, classés de la plus intéressante à la moins intéressante (gain, chances de vendre sous 3 jours, demande). Tu choisis si tes coups de cœur et tes artistes protégés sont proposés. En plus : le contrôle de tes annonces et un message prêt à copier pour le chat de ton label.
+• Vendre : tes doublons, tes cartes en pleine hype et les cartes que d'autres joueurs cherchent, classés de la plus intéressante à la moins intéressante (gain, chances de vendre sous 3 jours, demande). Tu choisis si tes coups de cœur et tes artistes protégés sont proposés. Un bouton prépare la vente groupée du site avec les meilleurs doublons et leurs prix. En plus : le contrôle de tes annonces et un message prêt à copier pour le chat de ton label.
 • Deck : le meilleur deck Face to Face de ta collection, et la carte à poser pour chacune des 9 questions.
 • SNEP : les singles certifiés Or, Platine ou Diamant dont la carte n'est pas encore montée dans WAX.
 
@@ -67,7 +67,7 @@ TES DONNÉES
 Tout reste dans ton navigateur : tes réglages et tes dernières analyses. Pas de compte, pas de serveur, pas de publicité, pas de statistiques d'usage. L'extension ne contacte que waxtcg.com (avec ta session, comme le site lui-même) et le site public du SNEP. Tu peux tout effacer depuis les Réglages.
 
 À SAVOIR
-Les règles de WAX interdisent les scripts (« pas d'auto-clic ni de navigateur piloté »). L'extension ne clique jamais, mais elle lit le site avec ta session quand tu lances une analyse : garde un usage modéré. Les requêtes partent une par une, espacées (0,7 seconde par défaut), et sont mises en cache. Tu restes responsable de l'utilisation de ton compte.
+Les règles de WAX interdisent les scripts (« pas d'auto-clic ni de navigateur piloté »). L'extension lit le site avec ta session quand tu lances une analyse, et le bouton « Préremplir sur WAX » remplit la fenêtre de vente à ta place : garde un usage modéré. Les requêtes partent une par une, espacées (0,7 seconde par défaut), et sont mises en cache. Tu restes responsable de l'utilisation de ton compte.
 ```
 
 ## 3. Onglet « Pratiques de confidentialité »
@@ -75,7 +75,7 @@ Les règles de WAX interdisent les scripts (« pas d'auto-clic ni de navigateur 
 **Objectif unique** :
 
 ```text
-Aider le joueur à décider quoi acheter, vendre ou jouer dans le jeu de cartes WAX (waxtcg.com) : l'extension lit les données du jeu en lecture seule, à la demande du joueur, et affiche des conseils dans un panneau latéral. Elle n'effectue jamais d'action de jeu.
+Aider le joueur à décider quoi acheter, vendre ou jouer dans le jeu de cartes WAX (waxtcg.com) : l'extension lit les données du jeu en lecture seule, à la demande du joueur, et affiche des conseils dans un panneau latéral. Elle n'effectue jamais d'action de jeu : elle peut préparer la vente groupée du site, que le joueur valide lui-même.
 ```
 
 **Justification des autorisations** :
@@ -102,7 +102,7 @@ L'extension fonctionne sur le jeu gratuit WAX (https://waxtcg.com). Elle n'a pas
 1. Créez un compte gratuit sur waxtcg.com (ou connectez-vous) et ouvrez quelques boosters gratuits pour avoir des cartes.
 2. Rechargez l'onglet waxtcg.com, puis cliquez sur l'icône de l'extension : le panneau latéral s'ouvre.
 3. Choisissez un onglet (Acheter, Enchères, Vendre, Deck, SNEP) et cliquez sur « Analyser ».
-Sans onglet waxtcg.com ouvert et connecté, le panneau affiche un message qui demande de l'ouvrir. L'extension est en lecture seule : elle n'effectue aucune action de jeu.
+Sans onglet waxtcg.com ouvert et connecté, le panneau affiche un message qui demande de l'ouvrir. L'extension n'effectue aucune action de jeu : la mise en vente préparée par « Préremplir sur WAX » est toujours validée par le joueur.
 ```
 
 ## 5. Distribution

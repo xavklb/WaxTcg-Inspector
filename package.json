@@ -2,7 +2,7 @@
   "name": "wax-inspector",
   "version": "1.0.0",
   "private": true,
-  "description": "Extension Chrome d'aide à la décision pour le Marché de WAX (lecture seule).",
+  "description": "Extension Chrome d'aide à la décision pour le Marché de WAX (n’achète et ne vend jamais à ta place).",
   "type": "module",
   "scripts": {
     "test": "node --test",

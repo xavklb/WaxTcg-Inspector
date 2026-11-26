@@ -85,6 +85,21 @@ export class WaxApi {
     return p;
   }
 
+  /** Demande à l'onglet WAX de préremplir la vente groupée (voir prefill.js). Ne met rien en vente. */
+  async prefillSell(items, hours) {
+    const tab = await this.findTab();
+    await chrome.tabs.update(tab.id, { active: true });
+    let res;
+    try {
+      res = await chrome.tabs.sendMessage(tab.id, { type: 'wax-inspector:prefill-sell', items, hours });
+    } catch {
+      res = null;
+    }
+    if (!res) throw new WaxError('NO_BRIDGE', 'Recharge l’onglet WAX (F5) pour activer l’extension, puis relance.');
+    if (!res.ok) throw new WaxError('PREFILL', res.error ?? 'Préremplissage impossible.');
+    return res;
+  }
+
   async openCard(trackId) {
     const tab = await this.findTab();
     await chrome.tabs.update(tab.id, { active: true });
