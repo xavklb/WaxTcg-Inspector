@@ -31,6 +31,7 @@ import {
   screenFlips,
   withoutListed,
 } from './analysis.js';
+import { PREFILL_EXTRA_DETAILS, prefillPlan } from './prefill.js';
 
 const DETAIL_TTL = 5 * 60_000;
 
@@ -331,10 +332,23 @@ export async function runSell(api, settings, { now = Date.now, progress = () => 
   const { kept, liked } = filterSaleCandidates(mergeSaleCandidates(collection, demand.mine), settings);
 
   // Les fiches du Marché (1 requête chacune) vont aux cartes les plus prometteuses.
-  const top = [...kept].sort((a, b) => preScore(b) - preScore(a)).slice(0, settings.maxDetails);
+  const ranked = [...kept].sort((a, b) => preScore(b) - preScore(a));
+  const top = ranked.slice(0, settings.maxDetails);
   const sales = [];
   for (const [i, c] of top.entries()) {
     progress(`Ta collection : ${c.track.title} (${i + 1}/${top.length})…`);
+    const detail = await api.get(`/api/market/${c.track.id}`, { ttlMs: DETAIL_TTL });
+    sales.push(evaluateSale(c, detail, clock()));
+  }
+
+  // Vente groupée : tant qu'il manque des ventes pour remplir les places libres, on lit d'autres fiches.
+  // Un numéro en coup de cœur ne peut pas être prérempli : inutile de lire sa fiche.
+  const free = Math.max(0, MARKET.maxOpenListings - open.length);
+  const extra = ranked.slice(top.length).filter((c) => !c.sellIsFavorite).slice(0, PREFILL_EXTRA_DETAILS);
+  for (const c of extra) {
+    const ready = prefillPlan(sales, free).length;
+    if (ready >= free) break;
+    progress(`Places d’annonce à remplir : ${ready}/${free} · ${c.track.title}…`);
     const detail = await api.get(`/api/market/${c.track.id}`, { ttlMs: DETAIL_TTL });
     sales.push(evaluateSale(c, detail, clock()));
   }
@@ -349,7 +363,7 @@ export async function runSell(api, settings, { now = Date.now, progress = () => 
     maxOpen: MARKET.maxOpenListings,
     listings,
     candidates: kept.length,
-    checked: top.length,
+    checked: sales.length,
     toSell: rankSales(sales),
     liked,
     options: { sellFavorites: settings.sellFavorites !== false, sellProtectedArtists: settings.sellProtectedArtists !== false },

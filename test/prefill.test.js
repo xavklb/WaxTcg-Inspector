@@ -15,22 +15,26 @@ const sale = (id, o = {}) => ({
   ...o,
 });
 
-test('préremplissage : seuls les doublons vendables sans coup de cœur', () => {
+test('préremplissage : tout ce qui rapporte plus que le recyclage, sauf les numéros en coup de cœur', () => {
   assert.equal(prefillBlocker(sale(1)), null);
-  assert.match(prefillBlocker(sale(2, { duplicates: 0 })), /dernier exemplaire/);
+  assert.equal(prefillBlocker(sale(2, { duplicates: 0 })), null, 'dernier exemplaire : le site demande confirmation');
+  assert.equal(prefillBlocker(sale(4, { listedByMe: 1 })), null, 'un exemplaire de plus d’un titre déjà en vente');
   assert.match(prefillBlocker(sale(3, { sellIsFavorite: true })), /coup de cœur/);
-  assert.match(prefillBlocker(sale(4, { listedByMe: 1 })), /déjà en vente/);
+  assert.match(prefillBlocker(sale(4, { listedByMe: 1, duplicates: 0 })), /déjà en vente/);
   assert.match(prefillBlocker(sale(5, { verdict: 'recycle' })), /recycler/);
   assert.match(prefillBlocker(sale(6, { price: 0 })), /prix/);
 });
 
-test('préremplissage : garde l’ordre du classement et les places libres', () => {
-  const list = [sale(1), sale(2, { duplicates: 0 }), sale(3), sale(4), sale(5)];
-  const plan = prefillPlan(list, 3);
-  assert.deepEqual(plan.map((p) => p.id), ['1', '3', '4']);
-  assert.deepEqual(Object.keys(plan[0]).sort(), ['artist', 'id', 'note', 'price', 'rarityLabel', 'title']);
-  assert.equal(plan[0].rarityLabel, 'Hit');
+test('préremplissage : remplit les places libres, titres déjà en vente en dernier', () => {
+  const list = [sale(1), sale(2, { listedByMe: 1 }), sale(3, { duplicates: 0 }), sale(4, { sellIsFavorite: true }), sale(5)];
+  assert.deepEqual(prefillPlan(list, 3).map((p) => p.id), ['1', '3', '5']);
+  assert.deepEqual(prefillPlan(list, 20).map((p) => p.id), ['1', '3', '5', '2']);
+  assert.deepEqual(prefillPlan(list, 20).map((p) => p.last), [false, true, false, false]);
+  assert.deepEqual(Object.keys(prefillPlan(list, 1)[0]).sort(), ['artist', 'id', 'last', 'note', 'price', 'rarityLabel', 'title']);
+  assert.equal(prefillPlan(list, 1)[0].rarityLabel, 'Hit');
   assert.deepEqual(prefillPlan(list, 0), []);
+  const many = Array.from({ length: 30 }, (_, i) => sale(100 + i));
+  assert.equal(prefillPlan(many, 25).length, 20, '20 annonces au plus');
 });
 
 test('préremplissage : la note explique le prix', () => {

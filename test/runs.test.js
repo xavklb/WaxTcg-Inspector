@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runAuctions, runBuy, runSell } from '../extension/lib/runs.js';
 import { DEFAULT_SETTINGS } from '../extension/lib/constants.js';
+import { prefillPlan } from '../extension/lib/prefill.js';
 import { respond, NOW } from '../dev/fixtures.js';
 
 // Fausse API : sert les données de démonstration et note chaque requête.
@@ -119,4 +120,35 @@ test('runSell : coups de cœur et artistes protégés écartés si je le choisis
   assert.ok(!api.calls.includes('/api/market/7001'), 'aucune requête pour une carte écartée');
   assert.deepEqual(res.liked, { favorites: 1, protectedArtists: 1 });
   assert.deepEqual(res.options, { sellFavorites: false, sellProtectedArtists: false });
+});
+
+test('runSell : lit d’autres fiches pour remplir les places d’annonce libres', async () => {
+  const full = await runSell(fakeApi(), DEFAULT_SETTINGS, opts);
+  const api = fakeApi();
+  const res = await runSell(api, { ...DEFAULT_SETTINGS, maxDetails: 2 }, opts);
+  const free = res.maxOpen - res.openCount;
+  const plan = (r) => prefillPlan(r.toSell, free).map((p) => p.id).sort();
+  assert.ok(res.checked > 2, 'plus de fiches que maxDetails');
+  assert.deepEqual(plan(res), plan(full), 'autant de ventes à préremplir qu’avec toutes les fiches');
+});
+
+test('runSell : s’arrête de lire des fiches quand les places libres sont remplies', async () => {
+  // 18 annonces ouvertes sur 20 : il ne reste que 2 places.
+  const base = fakeApi();
+  const api = {
+    calls: base.calls,
+    async get(path) {
+      const data = await base.get(path);
+      if (path.startsWith('/api/market?')) {
+        const open = data.mine.listings.filter((l) => l.status === 'open');
+        for (let i = 0; open.length + i < 18; i += 1) data.mine.listings.push({ ...open[0], id: `pad-${i}` });
+      }
+      return data;
+    },
+  };
+  const full = await runSell(fakeApi(), DEFAULT_SETTINGS, opts);
+  const res = await runSell(api, { ...DEFAULT_SETTINGS, maxDetails: 1 }, opts);
+  assert.equal(res.openCount, 18);
+  assert.equal(prefillPlan(res.toSell, 2).length, 2);
+  assert.ok(res.checked < full.checked, 'pas de fiche lue en trop');
 });
