@@ -2,7 +2,7 @@ import { WaxApi } from './lib/api.js';
 import { runAuctions, runBuy, runDeck, runSell, runSnep } from './lib/runs.js';
 import { strengths } from './lib/deck.js';
 import { parseWallet } from './lib/wallet.js';
-import { PREFILL_HOURS, prefillBlocker, prefillPlan } from './lib/prefill.js';
+import { PREFILL_HOURS, prefillPlan } from './lib/prefill.js';
 import {
   ANNOUNCE_PLACEHOLDERS,
   CHAT_MAX_LENGTH,
@@ -353,7 +353,11 @@ function likedNote(res) {
 /** Bouton qui coche les meilleures ventes dans la fenêtre « Vendre / Enchères » du site et remplit leurs prix. */
 function prefillPanel(sell, free) {
   const items = prefillPlan(sell, free);
-  const skipped = sell.slice(0, free).filter((r) => prefillBlocker(r)).length;
+  const favorites = sell.filter((r) => r.sellIsFavorite).length;
+  const lasts = items.filter((i) => i.last).length;
+  const lastHint = lasts
+    ? `${lasts} ${plural(lasts, 'est ton dernier exemplaire', 'sont tes derniers exemplaires')} : sur WAX, coche « Je ${plural(lasts, 'la', 'les')} vends quand même ». `
+    : '';
   const p = state.prefill;
   const run = async () => {
     state.prefill = { busy: true, message: null, error: null };
@@ -368,6 +372,7 @@ function prefillPanel(sell, free) {
           `${res.filled} carte${plural(res.filled, '', 's')} prête${plural(res.filled, '', 's')} sur WAX avec le prix conseillé. ` +
           (miss ? `${miss} introuvable${plural(miss, '', 's')} dans la fenêtre du site. ` : '') +
           (res.noRoom?.length ? `${res.noRoom.length} de plus que tes places d’annonce libres sur WAX. ` : '') +
+          lastHint +
           'Vérifie les prix, puis clique toi-même sur « Tout mettre en vente ».',
       };
     } catch (e) {
@@ -391,9 +396,12 @@ function prefillPanel(sell, free) {
     h(
       'p',
       { class: 'note' },
-      `Ouvre la vente groupée du Marché, coche ces cartes et remplit leurs prix (vente ${PREFILL_HOURS} h). Rien n’est mis en vente : tu vérifies et tu cliques sur « Tout mettre en vente ».`,
-      skipped
-        ? ` ${skipped} carte${plural(skipped, '', 's')} du haut de la liste ${plural(skipped, 'reste', 'restent')} à vendre depuis ${plural(skipped, 'sa', 'leur')} fiche (dernier exemplaire, coup de cœur ou déjà en vente).`
+      `Ouvre la vente groupée du Marché, coche ces cartes et remplit leurs prix (vente ${PREFILL_HOURS} h), jusqu’à remplir tes ${free} place${plural(free, '', 's')} libre${plural(free, '', 's')}. Rien n’est mis en vente : tu vérifies et tu cliques sur « Tout mettre en vente ».`,
+      items.length < free
+        ? ` Parmi les cartes vérifiées, seulement ${items.length} vente${plural(items.length, '', 's')} rapporte${plural(items.length, '', 'nt')} plus que le recyclage.`
+        : '',
+      favorites
+        ? ` ${favorites} carte${plural(favorites, '', 's')} en coup de cœur ${plural(favorites, 'reste', 'restent')} à vendre depuis ${plural(favorites, 'sa', 'leur')} fiche.`
         : '',
     ),
     p.message ? h('p', { class: 'lead' }, p.message) : null,
