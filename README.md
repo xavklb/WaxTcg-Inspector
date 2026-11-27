@@ -11,7 +11,7 @@ Elle n'achète et ne vend jamais à ta place. Seule exception, à ta demande : e
 - **Acheter** : titres en vente sous leur prix de revente réaliste, avec gain net après taxe.
 - **Enchères** : enchères Or et plus qui finissent bientôt sous leur valeur, avec mise max.
 - **Vendre** : tes cartes classées de la plus intéressante à vendre à la moins intéressante, contrôle de tes annonces, message pour le chat du label.
-  Le bouton **Préremplir sur WAX** ouvre « Vendre / Enchères », coche les meilleures ventes jusqu'à remplir tes places libres (20 annonces au plus) et remplit leurs prix conseillés. Si l'analyse n'a pas trouvé assez de ventes, elle lit d'autres fiches du Marché pour compléter. Seuls les numéros en coup de cœur et les cartes qu'il vaut mieux recycler sont laissés de côté. Pour un dernier exemplaire, le site te demande de cocher « Je la vends quand même ». Tu vérifies, puis tu cliques toi-même sur « Tout mettre en vente ».
+  Le bouton **Préremplir sur WAX** ouvre « Vendre / Enchères », coche les meilleures ventes jusqu'à remplir tes places libres (20 annonces au plus) et remplit leurs prix : 1 ♫ sous l'annonce la moins chère des autres joueurs (relue juste avant), pour passer juste devant, ou le prix conseillé si personne d'autre ne la vend. Si l'analyse n'a pas trouvé assez de ventes, elle lit d'autres fiches du Marché pour compléter. Seuls les numéros en coup de cœur et les doublons qui rapporteraient moins que le recyclage à ce prix sont laissés de côté. Pour un dernier exemplaire, le site te demande de cocher « Je la vends quand même ». Tu vérifies, puis tu cliques toi-même sur « Tout mettre en vente ».
 - **Deck** : meilleur deck Face to Face de ta collection.
 - **SNEP** : singles certifiés dont la carte n'a pas encore monté.
 
